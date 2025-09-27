@@ -48,16 +48,17 @@ router.get('/', async (req, res, next) => {
 // Search stocks using Alpha Vantage API
 router.get('/search', async (req, res, next) => {
   try {
-    const { q, limit = 10 } = req.query;
+    const { query, limit = 10 } = req.query;
     
-    if (!q || typeof q !== 'string' || q.trim().length === 0) {
+    if (!query || typeof query !== 'string' || query.trim().length === 0) {
       return res.status(400).json({
-        error: 'Search query (q) is required and must be a non-empty string'
+        success: false,
+        error: 'Search query is required and must be a non-empty string'
       });
     }
 
     // Search for stocks using Alpha Vantage API
-    const apiResults = await stockDataService.searchStocks(q as string);
+    const apiResults = await stockDataService.searchStocks(query as string);
     
     // Limit results
     const limitedResults = apiResults.slice(0, parseInt(limit as string));
@@ -77,13 +78,13 @@ router.get('/search', async (req, res, next) => {
           }
 
           return {
-            id: stock.id,
+            id: stock?.id,
             symbol: result.symbol,
             name: result.name,
             exchange: result.region,
-            sector: stock.sector,
-            industry: stock.industry,
-            marketCap: stock.marketCap?.toString(),
+            sector: stock?.sector,
+            industry: stock?.industry,
+            marketCap: stock?.marketCap?.toString(),
             type: result.type,
             matchScore: parseFloat(result.matchScore)
           };
@@ -102,13 +103,19 @@ router.get('/search', async (req, res, next) => {
     );
 
     res.json({
-      stocks: stocksWithDbInfo,
+      success: true,
+      data: {
+        bestMatches: stocksWithDbInfo
+      },
       total: stocksWithDbInfo.length,
-      query: q
+      query: query
     });
   } catch (error) {
     logger.error('Error searching stocks:', error);
-    next(error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to search stocks. Please try again later.'
+    });
   }
 });
 

@@ -26,10 +26,14 @@ export default function StocksPage() {
     
     setLoading(true)
     try {
+      console.log('Searching for:', searchTerm)
       const response = await fetch(`http://localhost:3001/api/stocks/search?query=${encodeURIComponent(searchTerm)}`)
+      console.log('Response status:', response.status)
       const data = await response.json()
+      console.log('Response data:', data)
       
       if (data.success && data.data.bestMatches) {
+        console.log('Setting stocks:', data.data.bestMatches)
         setStocks(data.data.bestMatches)
       } else {
         console.error('Failed to fetch stocks:', data)
