@@ -65,16 +65,12 @@ class FinancialDataService {
   constructor() {
     this.alphaVantageApiKey = process.env.ALPHA_VANTAGE_API_KEY || '';
     if (!this.alphaVantageApiKey) {
-      logger.warn('Alpha Vantage API key not found. Financial data service will use mock data.');
+      throw new Error('Alpha Vantage API key is required for financial data service. Please set ALPHA_VANTAGE_API_KEY environment variable.');
     }
   }
 
   async getFinancialData(symbol: string, dataType: string, period: string): Promise<any> {
     try {
-      if (!this.alphaVantageApiKey) {
-        return this.getMockFinancialData(symbol, dataType);
-      }
-
       // Check cache first
       const cachedData = await this.getCachedFinancialData(symbol, dataType, period);
       if (cachedData) {
@@ -113,8 +109,7 @@ class FinancialDataService {
       }
 
       if (response.data['Note']) {
-        logger.warn('Alpha Vantage API rate limit reached, using cached or mock data');
-        return this.getMockFinancialData(symbol, dataType);
+        throw new Error('Alpha Vantage API rate limit reached. Please try again later.');
       }
 
       // Cache the data
@@ -123,16 +118,12 @@ class FinancialDataService {
       return response.data;
     } catch (error) {
       logger.error(`Error fetching financial data for ${symbol}:`, error);
-      // Return mock data as fallback
-      return this.getMockFinancialData(symbol, dataType);
+      throw new Error(`Failed to fetch financial data for ${symbol}. Please ensure valid API key and symbol.`);
     }
   }
 
   async getQuote(symbol: string): Promise<Quote> {
     try {
-      if (!this.alphaVantageApiKey) {
-        return this.getMockQuote(symbol);
-      }
 
       const response = await axios.get(this.baseUrl, {
         params: {
@@ -145,7 +136,7 @@ class FinancialDataService {
 
       const quote = response.data['Global Quote'];
       if (!quote) {
-        return this.getMockQuote(symbol);
+        throw new Error(`No quote data available for symbol ${symbol}`);
       }
 
       return {
@@ -158,15 +149,12 @@ class FinancialDataService {
       };
     } catch (error) {
       logger.error(`Error fetching quote for ${symbol}:`, error);
-      return this.getMockQuote(symbol);
+      throw new Error(`Failed to fetch quote for ${symbol}. Please ensure valid API key and symbol.`);
     }
   }
 
   async getHistoricalData(symbol: string, period: string, interval: string): Promise<HistoricalDataPoint[]> {
     try {
-      if (!this.alphaVantageApiKey) {
-        return this.getMockHistoricalData(symbol);
-      }
 
       const function_name = interval === 'daily' ? 'TIME_SERIES_DAILY_ADJUSTED' : 'TIME_SERIES_INTRADAY';
       
@@ -184,7 +172,7 @@ class FinancialDataService {
       const timeSeries = response.data[timeSeriesKey];
 
       if (!timeSeries) {
-        return this.getMockHistoricalData(symbol);
+        throw new Error(`No historical data available for symbol ${symbol}`);
       }
 
       const historicalData: HistoricalDataPoint[] = [];
@@ -209,7 +197,7 @@ class FinancialDataService {
       return historicalData;
     } catch (error) {
       logger.error(`Error fetching historical data for ${symbol}:`, error);
-      return this.getMockHistoricalData(symbol);
+      throw new Error(`Failed to fetch historical data for ${symbol}. Please ensure valid API key and symbol.`);
     }
   }
 
@@ -244,19 +232,16 @@ class FinancialDataService {
         }));
       }
 
-      // Fallback to mock data
-      return this.getMockFinancialRatios(symbol, years);
+      // No ratios available in database
+      throw new Error(`No financial ratios available for symbol ${symbol}. Data needs to be populated from financial statements.`);
     } catch (error) {
       logger.error(`Error fetching financial ratios for ${symbol}:`, error);
-      return this.getMockFinancialRatios(symbol, years);
+      throw new Error(`Failed to fetch financial ratios for ${symbol}.`);
     }
   }
 
   async getEarnings(symbol: string): Promise<any> {
     try {
-      if (!this.alphaVantageApiKey) {
-        return this.getMockEarnings(symbol);
-      }
 
       const response = await axios.get(this.baseUrl, {
         params: {
@@ -270,7 +255,7 @@ class FinancialDataService {
       return response.data;
     } catch (error) {
       logger.error(`Error fetching earnings for ${symbol}:`, error);
-      return this.getMockEarnings(symbol);
+      throw new Error(`Failed to fetch earnings for ${symbol}. Please ensure valid API key and symbol.`);
     }
   }
 
@@ -357,109 +342,7 @@ class FinancialDataService {
     }
   }
 
-  // Mock data methods for development and fallback
-  private getMockFinancialData(symbol: string, dataType: string): any {
-    return {
-      Symbol: symbol.toUpperCase(),
-      Name: `${symbol.toUpperCase()} Corporation`,
-      Exchange: 'NASDAQ',
-      Sector: 'Technology',
-      Industry: 'Software',
-      MarketCapitalization: '1000000000000',
-      PERatio: '25.5',
-      EPS: '12.34',
-      DividendYield: '1.5%',
-      Beta: '1.2',
-      mock: true
-    };
-  }
 
-  private getMockQuote(symbol: string): Quote {
-    const basePrice = 150 + Math.random() * 100;
-    const change = (Math.random() - 0.5) * 10;
-    
-    return {
-      symbol: symbol.toUpperCase(),
-      price: Math.round(basePrice * 100) / 100,
-      change: Math.round(change * 100) / 100,
-      changePercent: Math.round((change / basePrice) * 10000) / 100,
-      volume: Math.floor(Math.random() * 10000000) + 1000000,
-      lastUpdated: new Date().toISOString().split('T')[0]
-    };
-  }
-
-  private getMockHistoricalData(symbol: string): HistoricalDataPoint[] {
-    const data: HistoricalDataPoint[] = [];
-    const basePrice = 150;
-    let currentPrice = basePrice;
-    
-    for (let i = 365; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      
-      const volatility = 0.02; // 2% daily volatility
-      const change = (Math.random() - 0.5) * volatility * currentPrice * 2;
-      
-      const open = currentPrice;
-      const close = Math.max(1, currentPrice + change);
-      const high = Math.max(open, close) * (1 + Math.random() * 0.01);
-      const low = Math.min(open, close) * (1 - Math.random() * 0.01);
-      
-      data.push({
-        date: date.toISOString().split('T')[0],
-        open: Math.round(open * 100) / 100,
-        high: Math.round(high * 100) / 100,
-        low: Math.round(low * 100) / 100,
-        close: Math.round(close * 100) / 100,
-        adjustedClose: Math.round(close * 100) / 100,
-        volume: Math.floor(Math.random() * 10000000) + 1000000
-      });
-      
-      currentPrice = close;
-    }
-    
-    return data.reverse();
-  }
-
-  private getMockFinancialRatios(symbol: string, years: number): FinancialRatios[] {
-    const ratios: FinancialRatios[] = [];
-    const currentYear = new Date().getFullYear();
-    
-    for (let i = 0; i < years; i++) {
-      ratios.push({
-        symbol: symbol.toUpperCase(),
-        year: currentYear - i,
-        peRatio: 20 + Math.random() * 20,
-        pbRatio: 3 + Math.random() * 5,
-        debtToEquity: 0.5 + Math.random() * 1.5,
-        currentRatio: 1 + Math.random() * 2,
-        quickRatio: 0.8 + Math.random() * 1.5,
-        returnOnEquity: 10 + Math.random() * 20,
-        returnOnAssets: 5 + Math.random() * 15,
-        grossMargin: 30 + Math.random() * 40,
-        operatingMargin: 15 + Math.random() * 25,
-        netMargin: 10 + Math.random() * 20,
-        dividendYield: Math.random() * 5
-      });
-    }
-    
-    return ratios;
-  }
-
-  private getMockEarnings(symbol: string): any {
-    return {
-      symbol: symbol.toUpperCase(),
-      annualEarnings: [
-        { fiscalDateEnding: '2023-12-31', reportedEPS: '12.34' },
-        { fiscalDateEnding: '2022-12-31', reportedEPS: '11.05' },
-        { fiscalDateEnding: '2021-12-31', reportedEPS: '9.87' }
-      ],
-      quarterlyEarnings: [
-        { fiscalDateEnding: '2023-12-31', reportedEPS: '3.45', estimatedEPS: '3.40', surprise: '0.05' },
-        { fiscalDateEnding: '2023-09-30', reportedEPS: '3.12', estimatedEPS: '3.15', surprise: '-0.03' }
-      ]
-    };
-  }
 }
 
 export const financialDataService = new FinancialDataService();

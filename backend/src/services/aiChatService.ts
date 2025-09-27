@@ -26,7 +26,7 @@ export interface AnalysisRequest {
 
 class AIChatService {
   private openai: OpenAI;
-  private model: string = 'gpt-4';
+  private model: string = 'gpt-4.1-nano';
 
   constructor() {
     const apiKey = process.env.OPENAI_API_KEY;

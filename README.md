@@ -4,11 +4,12 @@ A comprehensive AI-powered financial analysis platform that provides intelligent
 
 ## Features
 
-- 📈 **Stock Selection & Analysis**: Choose from a comprehensive list of financial instruments
-- 📊 **Financial Data Integration**: Real-time data from reliable financial sources
-- 🤖 **AI-Powered Insights**: Context-aware financial analysis using OpenAI
+- � **Real-time Stock Search**: Search stocks using Alpha Vantage API integration
+- �📈 **Stock Selection & Analysis**: Add stocks to portfolio with live data
+- 📊 **Financial Data Integration**: Live data from Alpha Vantage - no mock data
+- 🤖 **AI-Powered Insights**: Context-aware financial analysis using OpenAI with real market data
 - 📋 **Categorized Data Display**: Well-organized financial ratios and historical data
-- 💬 **Interactive Chat**: Sidebar AI assistant with access to all financial data
+- 💬 **Interactive Chat**: AI assistant with access to accurate financial data
 - 📱 **Responsive Design**: Modern, user-friendly interface
 
 ## Tech Stack
@@ -78,7 +79,6 @@ NEXT_PUBLIC_API_URL="http://localhost:3001/api"
 ```bash
 cd backend
 npx prisma migrate dev
-npx prisma db seed
 ```
 
 5. Start the development servers:

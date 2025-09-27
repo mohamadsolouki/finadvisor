@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { body, validationResult } from 'express-validator';
 import { logger } from '../utils/logger';
+import { stockDataService } from '../services/stockDataService';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -10,6 +11,7 @@ const prisma = new PrismaClient();
 // Get all available stocks
 router.get('/', async (req, res, next) => {
   try {
+    // Fetch stocks from database (populated from API calls)
     const stocks = await prisma.stock.findMany({
       select: {
         id: true,
@@ -25,6 +27,14 @@ router.get('/', async (req, res, next) => {
       orderBy: { symbol: 'asc' }
     });
 
+    if (stocks.length === 0) {
+      return res.json({
+        stocks: [],
+        total: 0,
+        message: 'No stocks available. Search for specific symbols to populate data from financial APIs.'
+      });
+    }
+
     res.json({
       stocks,
       total: stocks.length
@@ -35,46 +45,66 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// Search stocks
+// Search stocks using Alpha Vantage API
 router.get('/search', async (req, res, next) => {
   try {
-    const { q, sector, exchange, limit = 50 } = req.query;
+    const { q, limit = 10 } = req.query;
     
-    const where: any = { isActive: true };
-    
-    if (q) {
-      where.OR = [
-        { symbol: { contains: q as string, mode: 'insensitive' } },
-        { name: { contains: q as string, mode: 'insensitive' } }
-      ];
-    }
-    
-    if (sector) {
-      where.sector = sector;
-    }
-    
-    if (exchange) {
-      where.exchange = exchange;
+    if (!q || typeof q !== 'string' || q.trim().length === 0) {
+      return res.status(400).json({
+        error: 'Search query (q) is required and must be a non-empty string'
+      });
     }
 
-    const stocks = await prisma.stock.findMany({
-      where,
-      take: parseInt(limit as string),
-      select: {
-        id: true,
-        symbol: true,
-        name: true,
-        exchange: true,
-        sector: true,
-        industry: true,
-        marketCap: true
-      },
-      orderBy: { symbol: 'asc' }
-    });
+    // Search for stocks using Alpha Vantage API
+    const apiResults = await stockDataService.searchStocks(q as string);
+    
+    // Limit results
+    const limitedResults = apiResults.slice(0, parseInt(limit as string));
+    
+    // For each result, create or update in database if it doesn't exist
+    const stocksWithDbInfo = await Promise.all(
+      limitedResults.map(async (result) => {
+        try {
+          // Try to get stock from database first
+          let stock = await prisma.stock.findUnique({
+            where: { symbol: result.symbol }
+          });
+
+          // If not in database, create it
+          if (!stock) {
+            stock = await stockDataService.createOrUpdateStock(result.symbol);
+          }
+
+          return {
+            id: stock.id,
+            symbol: result.symbol,
+            name: result.name,
+            exchange: result.region,
+            sector: stock.sector,
+            industry: stock.industry,
+            marketCap: stock.marketCap?.toString(),
+            type: result.type,
+            matchScore: parseFloat(result.matchScore)
+          };
+        } catch (error) {
+          logger.warn(`Could not process search result for ${result.symbol}:`, error);
+          return {
+            symbol: result.symbol,
+            name: result.name,
+            exchange: result.region,
+            type: result.type,
+            matchScore: parseFloat(result.matchScore),
+            error: 'Could not fetch detailed information'
+          };
+        }
+      })
+    );
 
     res.json({
-      stocks,
-      total: stocks.length
+      stocks: stocksWithDbInfo,
+      total: stocksWithDbInfo.length,
+      query: q
     });
   } catch (error) {
     logger.error('Error searching stocks:', error);
@@ -116,10 +146,10 @@ router.get('/selected', authenticateToken, async (req: AuthenticatedRequest, res
   }
 });
 
-// Select/add stock to user's portfolio
+// Select/add stock to user's portfolio by symbol
 router.post('/select', [
   authenticateToken,
-  body('stockId').isUUID().withMessage('Valid stock ID is required'),
+  body('symbol').isString().isLength({ min: 1, max: 10 }).withMessage('Valid stock symbol is required'),
   body('notes').optional().isString().isLength({ max: 500 })
 ], async (req: AuthenticatedRequest, res, next) => {
   try {
@@ -128,23 +158,17 @@ router.post('/select', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { stockId, notes } = req.body;
+    const { symbol, notes } = req.body;
 
-    // Check if stock exists
-    const stock = await prisma.stock.findUnique({
-      where: { id: stockId }
-    });
-
-    if (!stock) {
-      return res.status(404).json({ error: 'Stock not found' });
-    }
+    // Create or get stock from API
+    const stock = await stockDataService.createOrUpdateStock(symbol);
 
     // Check if already selected
     const existingSelection = await prisma.userStock.findUnique({
       where: {
         userId_stockId: {
           userId: req.user!.id,
-          stockId
+          stockId: stock.id
         }
       }
     });
@@ -157,7 +181,7 @@ router.post('/select', [
     const userStock = await prisma.userStock.create({
       data: {
         userId: req.user!.id,
-        stockId,
+        stockId: stock.id,
         notes: notes || null
       },
       include: {

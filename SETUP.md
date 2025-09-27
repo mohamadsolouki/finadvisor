@@ -63,8 +63,9 @@ NEXT_PUBLIC_API_URL=http://localhost:3001/api
 ```bash
 cd backend
 npx prisma migrate dev
-npx prisma db seed
 ```
+
+Note: No seed data is used. Stock data will be fetched from Alpha Vantage API when users search for stocks.
 
 5. **Start the development servers:**
 ```bash
@@ -111,10 +112,10 @@ finadvisor/
 
 ### ✅ Database Schema
 - Users and authentication
-- Stock data and user selections
+- Stock data and user selections (populated from Alpha Vantage API)
 - Financial ratios and historical data
 - AI chat history
-- Seeded with sample data (AAPL, MSFT, GOOGL, etc.)
+- No seed data - all data fetched from reliable financial APIs
 
 ### ✅ API Endpoints
 - **Authentication:** `/api/auth/login`, `/api/auth/register`
@@ -125,9 +126,10 @@ finadvisor/
 
 ### ✅ Financial Data Integration
 - Alpha Vantage API integration for real-time data
-- Mock data fallbacks for development
+- No mock data - requires valid API key for operation
 - Caching system for API responses
 - Support for quotes, historical data, ratios, and earnings
+- Stock search and discovery through Alpha Vantage Symbol Search
 
 ### ✅ AI Integration
 - OpenAI GPT-4 integration
@@ -139,11 +141,12 @@ finadvisor/
 
 After setup, you can:
 
-1. **Register a new account** or use the seeded data
-2. **Select stocks** from the available instruments
-3. **View financial data** and ratios for selected stocks
-4. **Chat with the AI** for financial analysis and insights
-5. **Explore the data visualization** features
+1. **Register a new account** 
+2. **Search for stocks** using company names or symbols via Alpha Vantage API
+3. **Select stocks** to add to your portfolio
+4. **View real-time financial data** and ratios for selected stocks
+5. **Chat with the AI** for financial analysis and insights using live data
+6. **Explore the data visualization** features with accurate market data
 
 ## Development Guidelines
 
@@ -162,13 +165,19 @@ After setup, you can:
 
 **API Key Issues:**
 - Verify OpenAI API key has sufficient credits
-- Check Alpha Vantage API key is active
-- The system will use mock data if keys are invalid
+- Check Alpha Vantage API key is active and has sufficient quota
+- **CRITICAL**: Valid API keys are required - no fallback data available
+- Free Alpha Vantage tier allows 5 API requests per minute, 500 per day
 
 **Port Conflicts:**
 - Backend runs on port 3001
 - Frontend runs on port 3000
 - Change ports in respective package.json files if needed
+
+**Stock Search Issues:**
+- If no results appear, verify Alpha Vantage API key is working
+- Search uses Alpha Vantage Symbol Search - requires internet connection
+- Rate limits may cause temporary failures - wait and retry
 
 ## Architecture Highlights
 
