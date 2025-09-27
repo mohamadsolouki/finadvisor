@@ -1,0 +1,158 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userStocks  UserStock[]
+  chatHistory ChatHistory[]
+
+  @@map("users")
+}
+
+model Stock {
+  id         String  @id @default(cuid())
+  symbol     String  @unique
+  name       String
+  exchange   String
+  sector     String?
+  industry   String?
+  marketCap  BigInt?
+  isActive   Boolean @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  userStocks     UserStock[]
+  financialData  FinancialData[]
+  ratios         FinancialRatio[]
+  historicalData HistoricalData[]
+
+  @@map("stocks")
+}
+
+model UserStock {
+  id     String  @id @default(cuid())
+  userId String
+  stockId String
+  notes  String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, stockId])
+  @@map("user_stocks")
+}
+
+model FinancialData {
+  id              String   @id @default(cuid())
+  stockId         String
+  period          String   // Q1 2023, 2023, etc.
+  dataType        String   // income_statement, balance_sheet, cash_flow
+  revenue         BigInt?
+  netIncome       BigInt?
+  totalAssets     BigInt?
+  totalLiabilities BigInt?
+  shareholdersEquity BigInt?
+  operatingCashFlow BigInt?
+  freeCashFlow    BigInt?
+  eps             Float?
+  dividendPerShare Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, period, dataType])
+  @@map("financial_data")
+}
+
+model FinancialRatio {
+  id                    String   @id @default(cuid())
+  stockId               String
+  year                  Int
+  peRatio               Float?
+  pbRatio               Float?
+  debtToEquity          Float?
+  currentRatio          Float?
+  quickRatio            Float?
+  returnOnEquity        Float?
+  returnOnAssets        Float?
+  grossMargin           Float?
+  operatingMargin       Float?
+  netMargin             Float?
+  assetTurnover         Float?
+  inventoryTurnover     Float?
+  receivablesTurnover   Float?
+  dividendYield         Float?
+  priceToSales          Float?
+  priceToBook           Float?
+  evToEbitda            Float?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relations
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, year])
+  @@map("financial_ratios")
+}
+
+model HistoricalData {
+  id           String   @id @default(cuid())
+  stockId      String
+  date         DateTime
+  open         Float
+  high         Float
+  low          Float
+  close        Float
+  adjustedClose Float?
+  volume       BigInt
+  createdAt    DateTime @default(now())
+
+  // Relations
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, date])
+  @@map("historical_data")
+}
+
+model ChatHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  message   String
+  response  String
+  context   Json?
+  tokensUsed Int?
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("chat_history")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
