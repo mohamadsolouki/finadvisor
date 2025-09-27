@@ -11,25 +11,25 @@ export default function DashboardPage() {
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Stock Selection</h2>
             <p className="text-gray-600">Choose stocks to analyze from our comprehensive database</p>
-            <button className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+            <a href="/stocks" className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 inline-block text-center">
               Browse Stocks
-            </button>
+            </a>
           </div>
           
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Financial Data</h2>
             <p className="text-gray-600">Real-time financial data and analysis</p>
-            <button className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+            <a href="/financial-data" className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 inline-block text-center">
               View Data
-            </button>
+            </a>
           </div>
           
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">AI Analysis</h2>
             <p className="text-gray-600">Get AI-powered insights and recommendations</p>
-            <button className="mt-4 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">
+            <a href="/chat" className="mt-4 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 inline-block text-center">
               Chat with AI
-            </button>
+            </a>
           </div>
         </div>
         
