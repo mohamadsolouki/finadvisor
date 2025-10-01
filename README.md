@@ -1,33 +1,76 @@
 # Qualcomm Financial Analysis Dashboard 📊
 
-A comprehensive Streamlit application for analyzing Qualcomm's financial data with interactive visualizations and exportable reports.
+A comprehensive Streamlit application for analyzing Qualcomm's financial data with interactive visualizations, real-time market data, and exportable reports.
 
 ## Features
 
 ✨ **Key Features:**
 - 📈 Interactive financial data visualization
+- 📊 Real-time stock price analysis with Yahoo Finance integration
+- 🌱 ESG (Environmental, Social, Governance) analysis
+- 🏭 Industry benchmarking with peer comparison
+- ⚠️ Comprehensive risk analysis (VaR, volatility, drawdown)
 - 🎯 Automated data categorization into 10+ financial sections
-- 📊 Multiple chart types (line trends, comparisons, metrics)
 - 💡 AI-powered financial insights and analysis
 - 📄 Comprehensive PDF report generation
 - 📊 Detailed Excel export with multiple sheets
 - 🎨 Professional and intuitive UI
 - 🔍 Custom analysis tools for metric comparison
 
-## Data Categories
+## Analysis Pages
 
-The application automatically organizes financial data into:
+### 1. **Executive Summary**
+Quick overview with key metrics and performance trends
 
-1. **Income Statement** - Revenue, profit metrics, EPS
-2. **Balance Sheet** - Assets, liabilities, equity
-3. **Cash Flow** - Operating, investing, financing activities
-4. **Growth Ratios** - Sales, income, EPS growth trends
-5. **Equity Ratios** - EPS, dividends, book value
-6. **Profitability Ratios** - Margins, ROE, ROA
-7. **Cost Ratios** - Operating costs, administration
-8. **Liquidity Ratios** - Current ratio, quick ratio
-9. **Leverage Ratios** - Debt/equity, capital structure
-10. **Efficiency Ratios** - Turnover metrics, utilization
+### 2. **Financial Analysis** (Consolidated View)
+Complete financial statements and ratios in one page:
+- Income Statement - Revenue, profit metrics, EPS
+- Balance Sheet - Assets, liabilities, equity
+- Cash Flow - Operating, investing, financing activities
+- Growth Ratios - Sales, income, EPS growth trends
+- Equity Ratios - EPS, dividends, book value
+- Profitability Ratios - Margins, ROE, ROA
+- Cost Ratios - Operating costs, administration
+- Liquidity Ratios - Current ratio, quick ratio
+- Leverage Ratios - Debt/equity, capital structure
+- Efficiency Ratios - Turnover metrics, utilization
+
+### 3. **Price Analysis**
+Real-time stock market data:
+- Current price and daily changes
+- 52-week high/low tracking
+- Price history with 50-day and 200-day moving averages
+- Trading volume analysis
+- Return distribution
+- Performance metrics (1M, 3M, 1Y, YTD)
+
+### 4. **ESG Analysis**
+Environmental, Social, and Governance metrics:
+- Total ESG score
+- Individual component scores
+- Detailed sustainability metrics
+- Score interpretation guide
+
+### 5. **Industry Benchmarking**
+Compare with semiconductor industry peers:
+- Market cap comparison
+- P/E and P/B ratios
+- Profitability metrics
+- Peer comparison with NVIDIA, Broadcom, Texas Instruments, AMD
+- Visual comparison charts
+
+### 6. **Risk Analysis**
+Comprehensive risk metrics:
+- Beta (market volatility comparison)
+- Annualized volatility
+- Sharpe ratio
+- Maximum drawdown
+- Value at Risk (VaR) at 95% and 99% confidence
+- Rolling volatility charts
+- Drawdown analysis
+
+### 7. **Custom Analysis**
+Create custom metric comparisons across all categories
 
 ## Installation
 
