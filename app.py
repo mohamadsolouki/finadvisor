@@ -261,6 +261,23 @@ def main():
             st.sidebar.caption("Add OpenAI API key to .env file")
         
         st.sidebar.markdown("---")
+        
+        # Cache Management
+        st.sidebar.subheader("🔄 Cache Management")
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            if st.button("🗑️ Clear All Cache", help="Clear all cached data and force refresh", use_container_width=True):
+                st.cache_data.clear()
+                st.session_state.last_fetch_time = None
+                st.success("✅ Cache cleared! Page will reload.")
+                st.rerun()
+        with col2:
+            if st.session_state.last_fetch_time:
+                time_since = (datetime.now() - st.session_state.last_fetch_time).total_seconds() / 60
+                st.caption(f"Last fetch: {time_since:.0f}m ago")
+            else:
+                st.caption("No data cached")
+        
         st.sidebar.info("""
         **📊 Data Sources:**
         - Financial Statements: CSV file
@@ -272,8 +289,8 @@ def main():
         - Avoids rate limiting
         
         **💡 Tips:**
-        - If you see errors, wait 5-10 min
-        - Use refresh button sparingly
+        - If you see errors, click "Clear All Cache"
+        - Wait 5-10 min if rate-limited
         - Data updates automatically
         """)
         
