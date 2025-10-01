@@ -209,7 +209,8 @@ def main():
     page = st.sidebar.radio(
         "Pages",
         ["Executive Summary", "Financial Analysis", "Price Analysis", 
-         "ESG Analysis", "Industry Benchmarking", "Risk Analysis", "Custom Analysis"],
+         "ESG Analysis", "Industry Benchmarking", "Risk Analysis", 
+         "Financial Projections", "Custom Analysis"],
         label_visibility="collapsed"
     )
     
@@ -351,6 +352,11 @@ def main():
             # Import here to avoid circular imports
             from page_modules.risk_analysis import display_risk_analysis
             display_risk_analysis(TICKER, cached_info)
+        
+        elif page == "Financial Projections":
+            # Import here to avoid circular imports
+            from page_modules.financial_projections import display_financial_projections
+            display_financial_projections(TICKER, cached_info)
         
         elif page == "Custom Analysis":
             display_custom_analysis(categorized_data)
