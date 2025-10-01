@@ -174,10 +174,24 @@ def display_category_data(category_name, data, analyzer, ai_generator=None):
             else:
                 insight_text = result['insight']
                 if result.get('cached'):
-                    st.info(f"💡 **{insight_text}**")
+                    st.markdown("💡 **AI Insight (from cache):**")
+                    # Display in a styled container
+                    st.markdown(f"""
+                    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; 
+                                border: 1px solid #dee2e6; line-height: 1.6; color: #212529;">
+                    {insight_text}
+                    </div>
+                    """, unsafe_allow_html=True)
                     st.caption("✅ Loaded from cache")
                 else:
-                    st.success(f"💡 **{insight_text}**")
+                    st.markdown("💡 **AI Insight (freshly generated):**")
+                    # Display in a styled container
+                    st.markdown(f"""
+                    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; 
+                                border: 1px solid #dee2e6; line-height: 1.6; color: #212529;">
+                    {insight_text}
+                    </div>
+                    """, unsafe_allow_html=True)
                     st.caption("🆕 Freshly generated")
                 
                 if result.get('warning'):
@@ -186,7 +200,13 @@ def display_category_data(category_name, data, analyzer, ai_generator=None):
             # Fallback to basic insights if AI is not configured
             insights = analyzer.get_category_insights(category_name, data)
             if insights:
-                st.info(f"💡 **{insights}**")
+                st.markdown("💡 **Insight:**")
+                st.markdown(f"""
+                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; 
+                            border: 1px solid #dee2e6; line-height: 1.6; color: #212529;">
+                {insights}
+                </div>
+                """, unsafe_allow_html=True)
                 st.caption("⚠️ AI insights not configured. Add your OpenAI API key to .env file for AI-powered insights.")
             else:
                 st.warning("⚠️ AI insights not configured. Add your OpenAI API key to .env file.")

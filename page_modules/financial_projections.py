@@ -591,8 +591,13 @@ Be specific, cite actual numbers from the projections and metrics, reference all
                 ai_insight = response.choices[0].message.content.strip()
                 
                 # Display AI insight in an attractive format
-                st.markdown("""<div style="background-color: #e8f4f8; padding: 15px; border-radius: 10px; border-left: 5px solid #00acc1;"></div>""", unsafe_allow_html=True)
-                st.markdown(ai_insight)
+                st.markdown(f"""
+                <div style="background-color: #e8f4f8; padding: 25px; border-radius: 10px; 
+                            border-left: 5px solid #00acc1; line-height: 1.8; 
+                            color: #212529; white-space: pre-wrap;">
+                {ai_insight}
+                </div>
+                """, unsafe_allow_html=True)
                 
                 # Add disclaimer
                 st.caption("💡 AI-generated projection analysis based on historical financial data and market expectations. Projections are estimates based on historical growth rates and may not reflect future performance. These projections reference all charts and compare with analyst expectations shown above. Always conduct additional research and consider multiple scenarios before making investment decisions.")

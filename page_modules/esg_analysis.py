@@ -323,8 +323,13 @@ Be specific, cite actual scores from the data, reference the visualizations and 
                         ai_insight = response.choices[0].message.content.strip()
                         
                         # Display AI insight in an attractive format
-                        st.markdown("""<div style="background-color: #e8f5e9; padding: 15px; border-radius: 10px; border-left: 5px solid #4caf50;"></div>""", unsafe_allow_html=True)
-                        st.markdown(ai_insight)
+                        st.markdown(f"""
+                        <div style="background-color: #e8f5e9; padding: 25px; border-radius: 10px; 
+                                    border-left: 5px solid #4caf50; line-height: 1.8; 
+                                    color: #212529; white-space: pre-wrap;">
+                        {ai_insight}
+                        </div>
+                        """, unsafe_allow_html=True)
                         
                         # Add disclaimer
                         st.caption("💡 AI-generated ESG analysis based on current sustainability data. This analysis references all ESG scores, charts, and peer comparisons shown above. ESG investing involves additional considerations beyond financial metrics.")
