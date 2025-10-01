@@ -169,11 +169,8 @@ Be specific, cite actual numbers from the data, reference the visualizations, an
                     ai_insight = response.choices[0].message.content.strip()
                     
                     # Display AI insight in an attractive format
-                    st.markdown(f"""
-                    <div style="background-color: #f0f8ff; padding: 20px; border-radius: 10px; border-left: 5px solid #1f77b4;">
-                    {ai_insight}
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown("""<div style="background-color: #f0f8ff; padding: 15px; border-radius: 10px; border-left: 5px solid #1f77b4;"></div>""", unsafe_allow_html=True)
+                    st.markdown(ai_insight)
                     
                     # Add disclaimer
                     st.caption("💡 AI-generated analysis based on current market data. This analysis references all charts and metrics shown above. Always conduct additional research before making investment decisions.")

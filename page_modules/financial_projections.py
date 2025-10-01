@@ -123,6 +123,10 @@ def display_financial_projections(ticker, cached_info):
     st.subheader("🔮 Financial Projections & Forecasting")
     st.markdown(f"Project future financial performance for **{ticker}** and compare with analyst expectations")
     
+    # Handle None cached_info
+    if cached_info is None:
+        cached_info = {}
+    
     # Projection settings
     col1, col2 = st.columns([2, 1])
     
@@ -488,14 +492,27 @@ def display_financial_projections(ticker, cached_info):
                 final_eps = projections['eps'][-1]
                 projection_summary += f"- Projected EPS ({base_year + projection_years}): ${final_eps:.2f}\n"
             
+            # Pre-format market context values to avoid f-string issues
+            current_price = cached_info.get('currentPrice', 0)
+            current_price_str = f"${current_price:.2f}" if current_price else "N/A"
+            
+            forward_pe_str = f"{forward_pe:.2f}" if forward_pe else "N/A"
+            peg_ratio_str = f"{peg_ratio:.2f}" if peg_ratio else "N/A"
+            
+            analyst_target = analyst_data.get('price_target') if analyst_data else None
+            analyst_target_str = f"${analyst_target:.2f}" if analyst_target else "N/A"
+            
+            market_cap = cached_info.get('marketCap', 0)
+            market_cap_str = f"${market_cap/1e9:.2f}B" if market_cap else "N/A"
+            
             # Add market context
             market_context = f"""
 **Market Expectations & Valuation:**
-- Current Stock Price: ${cached_info.get('currentPrice', 0):.2f}
-- Forward P/E: {forward_pe if forward_pe else 'N/A'}
-- PEG Ratio: {peg_ratio if peg_ratio else 'N/A'}
-- Analyst Price Target: ${analyst_data.get('price_target', 0):.2f if analyst_data and analyst_data.get('price_target') else 'N/A'}
-- Market Cap: ${cached_info.get('marketCap', 0)/1e9:.2f}B
+- Current Stock Price: {current_price_str}
+- Forward P/E: {forward_pe_str}
+- PEG Ratio: {peg_ratio_str}
+- Analyst Price Target: {analyst_target_str}
+- Market Cap: {market_cap_str}
 """
             
             # Create comprehensive prompt
@@ -574,11 +591,8 @@ Be specific, cite actual numbers from the projections and metrics, reference all
                 ai_insight = response.choices[0].message.content.strip()
                 
                 # Display AI insight in an attractive format
-                st.markdown(f"""
-                <div style="background-color: #e8f4f8; padding: 20px; border-radius: 10px; border-left: 5px solid #00acc1;">
-                {ai_insight}
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown("""<div style="background-color: #e8f4f8; padding: 15px; border-radius: 10px; border-left: 5px solid #00acc1;"></div>""", unsafe_allow_html=True)
+                st.markdown(ai_insight)
                 
                 # Add disclaimer
                 st.caption("💡 AI-generated projection analysis based on historical financial data and market expectations. Projections are estimates based on historical growth rates and may not reflect future performance. These projections reference all charts and compare with analyst expectations shown above. Always conduct additional research and consider multiple scenarios before making investment decisions.")
