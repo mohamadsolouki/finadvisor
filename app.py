@@ -2,15 +2,20 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timedelta
 import sys
 from pathlib import Path
+import yfinance as yf
+import numpy as np
 
 # Add utils directory to path
 sys.path.append(str(Path(__file__).parent))
 
 from utils.data_analyzer import FinancialAnalyzer
 from utils.report_generator import ReportGenerator
+
+# Ticker symbol for Qualcomm
+TICKER = "QCOM"
 
 # Page configuration
 st.set_page_config(
@@ -74,13 +79,25 @@ def load_and_categorize_data(file_path):
     
     current_category = None
     
+    # Map CSV headers to category names
+    header_to_category = {
+        'Income Statements': 'Income Statement',
+        'Balance Sheet': 'Balance Sheet',
+        'Cash Flow': 'Cash Flow',
+        'Key Ratios': None  # This is followed by subcategories
+    }
+    
     for idx, row in df.iterrows():
         param = str(row['Parameters']).strip()
         
-        # Check if this is a category header
-        if param in ['Income Statements', 'Balance Sheet', 'Cash Flow', 'Key Ratios']:
+        # Check if this is a main category header (Income Statements, Balance Sheet, etc.)
+        if param in header_to_category:
+            if header_to_category[param]:
+                current_category = header_to_category[param]
+            # For Key Ratios, wait for subcategory
             continue
         elif param in categories.keys():
+            # This handles subcategories under Key Ratios
             current_category = param
         elif current_category and param != 'nan' and not pd.isna(row['Parameters']):
             categories[current_category].append(idx)
@@ -214,8 +231,8 @@ def main():
         # Sidebar options
         page = st.sidebar.radio(
             "Select View",
-            ["Executive Summary", "Income Statement", "Balance Sheet", "Cash Flow", 
-             "Financial Ratios", "All Categories", "Custom Analysis"]
+            ["Executive Summary", "Financial Analysis", "Price Analysis", 
+             "ESG Analysis", "Industry Benchmarking", "Risk Analysis", "Custom Analysis"]
         )
         
         st.sidebar.markdown("---")
@@ -251,13 +268,31 @@ def main():
             # Key metrics
             col1, col2, col3, col4 = st.columns(4)
             
-            # Get latest year data
+            # Get latest year data - extract years from any available data
+            latest_year = None
+            prev_year = None
+            
+            # Try to get years from income data first, then fallback to other categories
             income_data = categorized_data.get('Income Statement')
             if income_data is not None and len(income_data) > 0:
                 years = [col for col in income_data.columns if col not in ['Parameters', 'Currency']]
-                latest_year = years[-1]
-                prev_year = years[-2] if len(years) > 1 else latest_year
-                
+                if len(years) > 0:
+                    latest_year = years[-1]
+                    prev_year = years[-2] if len(years) > 1 else latest_year
+            
+            # If years not found in income data, try equity or profitability data
+            if latest_year is None:
+                for category in ['Equity Ratios', 'Profitability Ratios', 'Liquidity Ratios']:
+                    data = categorized_data.get(category)
+                    if data is not None and len(data) > 0:
+                        years = [col for col in data.columns if col not in ['Parameters', 'Currency']]
+                        if len(years) > 0:
+                            latest_year = years[-1]
+                            prev_year = years[-2] if len(years) > 1 else latest_year
+                            break
+            
+            # Revenue metrics
+            if income_data is not None and len(income_data) > 0 and latest_year is not None:
                 # Revenue
                 revenue_row = income_data[income_data['Parameters'] == 'Total Revenue']
                 if not revenue_row.empty:
@@ -282,7 +317,7 @@ def main():
             
             # EPS
             equity_data = categorized_data.get('Equity Ratios')
-            if equity_data is not None and len(equity_data) > 0:
+            if equity_data is not None and len(equity_data) > 0 and latest_year is not None:
                 eps_row = equity_data[equity_data['Parameters'] == 'EPS (Earnings per Share)']
                 if not eps_row.empty:
                     current_eps = float(str(eps_row[latest_year].iloc[0]).replace(',', ''))
@@ -295,7 +330,7 @@ def main():
             
             # ROE
             profit_data = categorized_data.get('Profitability Ratios')
-            if profit_data is not None and len(profit_data) > 0:
+            if profit_data is not None and len(profit_data) > 0 and latest_year is not None:
                 roe_row = profit_data[profit_data['Parameters'] == 'Return on Equity']
                 if not roe_row.empty:
                     current_roe = float(str(roe_row[latest_year].iloc[0]).replace(',', ''))
