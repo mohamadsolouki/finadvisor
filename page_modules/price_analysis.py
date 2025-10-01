@@ -5,6 +5,7 @@ Displays stock price charts, technical indicators, and trading analysis
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from utils.data_fetcher import get_historical_data, get_stock_info
 from utils.visualizations import create_candlestick_chart, create_rsi_chart
@@ -19,7 +20,7 @@ def display_price_analysis(ticker, cached_info=None):
     with col1:
         st.markdown("### Market Data")
     with col2:
-        period = st.selectbox("Select Period", ["1mo", "3mo", "6mo", "1y", "2y", "5y", "max"], index=5)
+        period = st.selectbox("Select Period", ["1mo", "3mo", "6mo", "1y", "2y", "5y", "max"], index=6)  # Default to max
     with col3:
         st.write("")  # Spacer
     
@@ -147,16 +148,197 @@ def display_price_analysis(ticker, cached_info=None):
     st.subheader("Performance Metrics")
     perf_col1, perf_col2, perf_col3, perf_col4 = st.columns(4)
     
-    returns_1m = ((hist['Close'].iloc[-1] / hist['Close'].iloc[-21]) - 1) * 100 if len(hist) > 21 else 0
-    returns_3m = ((hist['Close'].iloc[-1] / hist['Close'].iloc[-63]) - 1) * 100 if len(hist) > 63 else 0
-    returns_1y = ((hist['Close'].iloc[-1] / hist['Close'].iloc[-252]) - 1) * 100 if len(hist) > 252 else 0
-    returns_ytd = ((hist['Close'].iloc[-1] / hist['Close'].iloc[0]) - 1) * 100
+    returns_1m = ((hist['Close'].iloc[-1] / hist['Close'].iloc[-21]) - 1) * 100 if len(hist) > 21 else None
+    returns_3m = ((hist['Close'].iloc[-1] / hist['Close'].iloc[-63]) - 1) * 100 if len(hist) > 63 else None
+    returns_1y = ((hist['Close'].iloc[-1] / hist['Close'].iloc[-252]) - 1) * 100 if len(hist) > 252 else None
+    
+    # Calculate YTD return - find first trading day of current year
+    current_year = pd.Timestamp.now().year
+    ytd_data = hist[hist.index.year == current_year]
+    if len(ytd_data) > 0:
+        returns_ytd = ((hist['Close'].iloc[-1] / ytd_data['Close'].iloc[0]) - 1) * 100
+    else:
+        returns_ytd = None
     
     with perf_col1:
-        st.metric("1 Month Return", f"{returns_1m:+.2f}%")
+        st.metric("1 Month Return", f"{returns_1m:+.2f}%" if returns_1m is not None else "N/A")
     with perf_col2:
-        st.metric("3 Month Return", f"{returns_3m:+.2f}%")
+        st.metric("3 Month Return", f"{returns_3m:+.2f}%" if returns_3m is not None else "N/A")
     with perf_col3:
-        st.metric("1 Year Return", f"{returns_1y:+.2f}%")
+        st.metric("1 Year Return", f"{returns_1y:+.2f}%" if returns_1y is not None else "N/A")
     with perf_col4:
-        st.metric("YTD Return", f"{returns_ytd:+.2f}%")
+        st.metric("YTD Return", f"{returns_ytd:+.2f}%" if returns_ytd is not None else "N/A")
+    
+    st.markdown("---")
+    
+    # AI-Powered Price Analysis
+    st.markdown("### 🤖 AI-Powered Price & Technical Analysis")
+    st.markdown("Comprehensive interpretation of price trends, technical indicators, and trading patterns")
+    
+    # Import AI insights generator
+    from utils.ai_insights_generator import AIInsightsGenerator
+    from pathlib import Path
+    
+    # Initialize AI generator
+    data_dir = Path("data")
+    ai_generator = AIInsightsGenerator(data_dir)
+    
+    if ai_generator.enabled:
+        with st.spinner("🧠 Generating comprehensive price analysis..."):
+            # Get company name from info
+            company_name = info.get('longName', info.get('shortName', ticker))
+            
+            # Use the same hist data that's being displayed in charts
+            # Filter data from 2020 onwards
+            hist_from_2020 = hist[hist.index >= '2020-01-01']
+            
+            # Get 2020 baseline
+            start_2020 = None
+            price_2020 = None
+            if not hist_from_2020.empty:
+                start_2020 = hist_from_2020.index[0]
+                price_2020 = hist_from_2020['Close'].iloc[0]
+            else:
+                # If no 2020 data, use earliest available
+                start_2020 = hist.index[0]
+                price_2020 = hist['Close'].iloc[0]
+            
+            # Calculate key statistics from the displayed data
+            volatility = hist['Close'].pct_change().std() * (252 ** 0.5) * 100  # Annualized
+            avg_daily_volume = hist['Volume'].mean()
+            max_price = hist['High'].max()
+            min_price = hist['Low'].min()
+            
+            # Get latest values from displayed data
+            latest_ma20 = hist['MA20'].iloc[-1] if 'MA20' in hist.columns and not pd.isna(hist['MA20'].iloc[-1]) else None
+            latest_ma50 = hist['MA50'].iloc[-1] if 'MA50' in hist.columns and not pd.isna(hist['MA50'].iloc[-1]) else None
+            latest_ma200 = hist['MA200'].iloc[-1] if 'MA200' in hist.columns and not pd.isna(hist['MA200'].iloc[-1]) else None
+            
+            # Count trend signals
+            bullish_signals = sum([
+                current_price > latest_ma20 if latest_ma20 else False,
+                current_price > latest_ma50 if latest_ma50 else False,
+                current_price > latest_ma200 if latest_ma200 else False,
+                current_rsi < 70 and current_rsi > 50
+            ])
+            
+            # Prepare comprehensive context
+            price_2020_str = f"${price_2020:.2f}" if price_2020 else "N/A"
+            change_from_2020 = ((current_price - price_2020) / price_2020 * 100) if price_2020 else None
+            change_from_2020_str = f"+{change_from_2020:.1f}%" if change_from_2020 and change_from_2020 > 0 else f"{change_from_2020:.1f}%" if change_from_2020 else "N/A"
+            
+            # Pre-format values for context
+            ma20_str = f"${latest_ma20:.2f}" if latest_ma20 else "N/A"
+            ma50_str = f"${latest_ma50:.2f}" if latest_ma50 else "N/A"
+            ma200_str = f"${latest_ma200:.2f}" if latest_ma200 else "N/A"
+            volatility_str = f"{volatility:.1f}%"
+            returns_1m_str = f"{returns_1m:+.2f}%" if returns_1m is not None else "N/A"
+            returns_3m_str = f"{returns_3m:+.2f}%" if returns_3m is not None else "N/A"
+            returns_1y_str = f"{returns_1y:+.2f}%" if returns_1y is not None else "N/A"
+            
+            # Build comprehensive prompt
+            prompt = f"""You are a senior equity research analyst and technical analyst specializing in stock price analysis and technical indicators.
+
+**{company_name} ({ticker}) - Price Analysis for Period: {period}**
+
+**Long-Term Trend (2020-Present):**
+- Price in 2020: {price_2020_str}
+- Current Price: ${current_price:.2f}
+- Total Change from 2020: {change_from_2020_str}
+
+**Current Technical Indicators:**
+- RSI (14): {current_rsi:.1f}
+- 20-Day MA: {ma20_str}
+- 50-Day MA: {ma50_str}
+- 200-Day MA: {ma200_str}
+- Bollinger Band Position: {bb_position*100:.1f}%
+- Bullish Signals Active: {bullish_signals}/4
+
+**Price Metrics:**
+- Period High: ${max_price:.2f}
+- Period Low: ${min_price:.2f}
+- Annualized Volatility: {volatility_str}
+- Average Daily Volume: {avg_daily_volume/1e6:.1f}M shares
+
+**Performance Returns:**
+- 1 Month: {returns_1m_str}
+- 3 Month: {returns_3m_str}
+- 1 Year: {returns_1y_str}
+
+**Visual Context:**
+The analysis includes four key visualizations:
+1. **Candlestick Chart**: Shows price action with moving averages and Bollinger Bands
+2. **RSI Chart**: Momentum indicator showing overbought/oversold conditions
+3. **Volume Chart**: Trading volume patterns over time
+4. **Returns Distribution**: Daily returns volatility pattern
+
+**Your Task:**
+Provide a comprehensive price and technical analysis (700-900 words) that covers:
+
+1. **Long-Term Trend Analysis (2020-Present)**: Analyze the {change_from_2020_str} change from 2020. What does this trajectory tell us? Reference the candlestick chart.
+
+2. **Recent Price Action**: Examine the {period} period trend. Uptrend, downtrend, or consolidation? Reference candlestick chart.
+
+3. **Technical Indicators**: Evaluate RSI at {current_rsi:.1f}, price vs moving averages, and Bollinger Band position. What do they signal?
+
+4. **Volume Analysis**: Analyze trading volume patterns. Is volume confirming price moves?
+
+5. **Support/Resistance**: Identify key levels near ${min_price:.2f} (support) and ${max_price:.2f} (resistance).
+
+6. **Volatility Assessment**: With {volatility_str} volatility, assess risk level. Reference returns distribution.
+
+7. **Performance Context**: Compare 1M, 3M, and 1Y returns. Which timeframe shows strength?
+
+8. **Trading Signals**: Based on {bullish_signals}/4 signals and all indicators, what's the technical setup?
+
+9. **Risk Considerations**: Key price levels to watch and potential volatility triggers.
+
+10. **Investment Implications**: Guidance for traders vs long-term investors.
+
+Be specific with prices and values, reference all four charts, and provide actionable insights."""
+
+            try:
+                # Generate AI insight using OpenAI
+                import os
+                from openai import OpenAI
+                from dotenv import load_dotenv
+                
+                load_dotenv()
+                client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+                model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+                
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a senior equity research analyst and technical analyst with deep expertise in chart analysis, technical indicators, and trading patterns. Provide comprehensive, data-driven insights that reference specific price levels and all visualizations."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    temperature=0.7,
+                    max_tokens=2000
+                )
+                
+                ai_insight = response.choices[0].message.content.strip()
+                
+                # Display AI insight in an attractive format
+                st.markdown(f"""
+                <div style="background-color: #e3f2fd; padding: 25px; border-radius: 10px; 
+                            border-left: 5px solid #2196f3; line-height: 1.8; 
+                            color: #212529; white-space: pre-wrap;">
+                {ai_insight}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Add disclaimer
+                st.caption("💡 AI-generated price and technical analysis based on historical data and indicators. This analysis references all charts and metrics shown above. Technical analysis is one tool among many - conduct comprehensive research before investing. Past performance doesn't guarantee future results.")
+                
+            except Exception as e:
+                st.warning(f"⚠️ Unable to generate AI price analysis: {str(e)}")
+                st.info("Please ensure your OpenAI API key is properly configured in the .env file.")
+    else:
+        st.info("🔑 **AI Price Analysis Unavailable**: Configure your OpenAI API key in the .env file to enable comprehensive AI-powered price and technical analysis that examines all charts, indicators, and long-term trends from 2020 to present.")
