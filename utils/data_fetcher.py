@@ -221,11 +221,16 @@ def get_competitor_data(ticker_list):
                     else:
                         break
                 
+                # Handle P/E ratio - use forwardPE if trailingPE is None or negative
+                trailing_pe = comp_info.get('trailingPE')
+                if trailing_pe is None or trailing_pe <= 0:
+                    trailing_pe = comp_info.get('forwardPE', None)
+                
                 comparison_data.append({
                     'Company': name,
                     'Ticker': ticker_sym,
                     'Market Cap (B)': comp_info.get('marketCap', 0) / 1e9,
-                    'P/E Ratio': comp_info.get('trailingPE', 0),
+                    'P/E Ratio': trailing_pe if trailing_pe and trailing_pe > 0 else None,
                     'P/B Ratio': comp_info.get('priceToBook', 0),
                     'Profit Margin (%)': comp_info.get('profitMargins', 0) * 100,
                     'Operating Margin (%)': comp_info.get('operatingMargins', 0) * 100,
@@ -243,3 +248,65 @@ def get_competitor_data(ticker_list):
                 break
     
     return comparison_data
+
+
+@st.cache_data(ttl=7200)  # Cache for 2 hours
+def get_competitor_esg_data(ticker_list):
+    """Fetch ESG data for competitors with caching and rate limiting"""
+    esg_comparison_data = []
+    
+    for idx, (ticker_sym, name) in enumerate(ticker_list.items()):
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                # Add delay between requests to avoid rate limiting
+                time.sleep(0.5 * (idx + 1) + (0.3 * attempt))
+                
+                # Let yfinance handle session management
+                comp_stock = yf.Ticker(ticker_sym)
+                esg_data = comp_stock.sustainability
+                
+                # Check if ESG data is available
+                if esg_data is not None and not esg_data.empty:
+                    total_esg = esg_data.loc['totalEsg'].iloc[0] if 'totalEsg' in esg_data.index else None
+                    env_score = esg_data.loc['environmentScore'].iloc[0] if 'environmentScore' in esg_data.index else None
+                    social_score = esg_data.loc['socialScore'].iloc[0] if 'socialScore' in esg_data.index else None
+                    gov_score = esg_data.loc['governanceScore'].iloc[0] if 'governanceScore' in esg_data.index else None
+                    
+                    esg_comparison_data.append({
+                        'Company': name,
+                        'Ticker': ticker_sym,
+                        'Total ESG Score': total_esg,
+                        'Environment Score': env_score,
+                        'Social Score': social_score,
+                        'Governance Score': gov_score
+                    })
+                    break  # Success
+                else:
+                    # No ESG data available
+                    esg_comparison_data.append({
+                        'Company': name,
+                        'Ticker': ticker_sym,
+                        'Total ESG Score': None,
+                        'Environment Score': None,
+                        'Social Score': None,
+                        'Governance Score': None
+                    })
+                    break
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                    continue
+                # Add entry with None values if all retries failed
+                esg_comparison_data.append({
+                    'Company': name,
+                    'Ticker': ticker_sym,
+                    'Total ESG Score': None,
+                    'Environment Score': None,
+                    'Social Score': None,
+                    'Governance Score': None
+                })
+                break
+    
+    return esg_comparison_data
