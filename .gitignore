@@ -48,5 +48,8 @@ ENV/
 .env
 .env.local
 
+# AI Insights Cache
+data/insights/
+
 # Logs
 *.log

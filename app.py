@@ -14,6 +14,7 @@ from utils.data_analyzer import FinancialAnalyzer
 from utils.report_generator import ReportGenerator
 from utils.data_fetcher import get_stock_info
 from utils.visualizations import create_trend_chart, create_comparison_chart
+from utils.ai_insights_generator import AIInsightsGenerator
 
 # Import page modules
 from page_modules.price_analysis import display_price_analysis
@@ -116,8 +117,8 @@ def load_and_categorize_data(file_path):
     return df, categorized_data
 
 
-def display_category_data(category_name, data, analyzer):
-    """Display data for a specific category with visualizations"""
+def display_category_data(category_name, data, analyzer, ai_generator=None):
+    """Display data for a specific category with visualizations and AI insights"""
     st.markdown(f'<div class="section-header">{category_name}</div>', unsafe_allow_html=True)
     
     # Display the data table
@@ -140,10 +141,55 @@ def display_category_data(category_name, data, analyzer):
             fig = create_comparison_chart(comparison_data, f"{category_name} - Top Metrics Comparison")
             st.plotly_chart(fig, use_container_width=True)
     
-    # Display insights
-    insights = analyzer.get_category_insights(category_name, data)
-    if insights:
-        st.info(f"**Key Insights:** {insights}")
+    # AI-powered insights section
+    st.markdown("### 🤖 Key Insights")
+    
+    # Initialize session state for regenerate requests
+    regenerate_key = f"regenerate_{category_name.replace(' ', '_')}"
+    if regenerate_key not in st.session_state:
+        st.session_state[regenerate_key] = False
+    
+    # Create columns for insight display and regenerate button
+    insight_col, button_col = st.columns([5, 1])
+    
+    with button_col:
+        if st.button("🔄 Regenerate", key=f"btn_{regenerate_key}", help="Generate new AI insight"):
+            st.session_state[regenerate_key] = True
+    
+    with insight_col:
+        if ai_generator and ai_generator.enabled:
+            # Generate or retrieve insight
+            force_regenerate = st.session_state[regenerate_key]
+            
+            if force_regenerate:
+                with st.spinner("🤖 Generating AI insight..."):
+                    result = ai_generator.generate_insight(category_name, data, force_regenerate=True)
+                    st.session_state[regenerate_key] = False  # Reset flag
+            else:
+                result = ai_generator.generate_insight(category_name, data, force_regenerate=False)
+            
+            # Display the insight
+            if result.get('error'):
+                st.error(result['insight'])
+            else:
+                insight_text = result['insight']
+                if result.get('cached'):
+                    st.info(f"💡 **{insight_text}**")
+                    st.caption("✅ Loaded from cache")
+                else:
+                    st.success(f"💡 **{insight_text}**")
+                    st.caption("🆕 Freshly generated")
+                
+                if result.get('warning'):
+                    st.warning(result['warning'])
+        else:
+            # Fallback to basic insights if AI is not configured
+            insights = analyzer.get_category_insights(category_name, data)
+            if insights:
+                st.info(f"💡 **{insights}**")
+                st.caption("⚠️ AI insights not configured. Add your OpenAI API key to .env file for AI-powered insights.")
+            else:
+                st.warning("⚠️ AI insights not configured. Add your OpenAI API key to .env file.")
     
     st.markdown("---")
 
@@ -171,11 +217,13 @@ def main():
     
     # Load data
     data_path = Path(__file__).parent / "data" / "QCOMfinancials.csv"
+    data_dir = Path(__file__).parent / "data"
     
     try:
         full_data, categorized_data = load_and_categorize_data(data_path)
         analyzer = FinancialAnalyzer(categorized_data)
         report_gen = ReportGenerator(full_data, categorized_data, analyzer)
+        ai_generator = AIInsightsGenerator(data_dir)
         
         st.sidebar.markdown("---")
         
@@ -195,6 +243,22 @@ def main():
             time_diff = datetime.now() - st.session_state.last_fetch_time
             minutes = time_diff.seconds // 60
             st.sidebar.caption(f"📅 Last refreshed: {minutes} min ago" if minutes > 0 else "📅 Just refreshed")
+        
+        st.sidebar.markdown("---")
+        
+        # AI Configuration Status
+        st.sidebar.subheader("🤖 AI Insights")
+        if ai_generator.enabled:
+            st.sidebar.success("✅ AI insights enabled")
+            st.sidebar.caption(f"Model: {ai_generator.model}")
+            
+            # Add button to clear AI cache
+            if st.sidebar.button("🗑️ Clear AI Cache", help="Clear all cached AI insights"):
+                ai_generator.clear_cache()
+                st.sidebar.success("Cache cleared!")
+        else:
+            st.sidebar.warning("⚠️ AI insights disabled")
+            st.sidebar.caption("Add OpenAI API key to .env file")
         
         st.sidebar.markdown("---")
         st.sidebar.info("""
@@ -253,7 +317,7 @@ def main():
             display_executive_summary(categorized_data, analyzer)
         
         elif page == "Financial Analysis":
-            display_financial_analysis(categorized_data, analyzer)
+            display_financial_analysis(categorized_data, analyzer, ai_generator)
         
         elif page == "Price Analysis":
             display_price_analysis(TICKER, cached_info)
@@ -375,7 +439,7 @@ def display_executive_summary(categorized_data, analyzer):
         st.info(f"• {insight}")
 
 
-def display_financial_analysis(categorized_data, analyzer):
+def display_financial_analysis(categorized_data, analyzer, ai_generator=None):
     """Display complete financial analysis page with tabs"""
     st.subheader("📊 Complete Financial Analysis")
     st.markdown("Comprehensive view of all financial statements and key ratios")
@@ -389,7 +453,7 @@ def display_financial_analysis(categorized_data, analyzer):
         
         for category_name in financial_statement_categories:
             if category_name in categorized_data:
-                display_category_data(category_name, categorized_data[category_name], analyzer)
+                display_category_data(category_name, categorized_data[category_name], analyzer, ai_generator)
     
     with tab2:
         st.markdown("### Performance and Growth Metrics")
@@ -397,7 +461,7 @@ def display_financial_analysis(categorized_data, analyzer):
         
         for category_name in performance_categories:
             if category_name in categorized_data:
-                display_category_data(category_name, categorized_data[category_name], analyzer)
+                display_category_data(category_name, categorized_data[category_name], analyzer, ai_generator)
     
     with tab3:
         st.markdown("### Operational and Financial Health Ratios")
@@ -405,7 +469,7 @@ def display_financial_analysis(categorized_data, analyzer):
         
         for category_name in operational_categories:
             if category_name in categorized_data:
-                display_category_data(category_name, categorized_data[category_name], analyzer)
+                display_category_data(category_name, categorized_data[category_name], analyzer, ai_generator)
 
 
 def display_custom_analysis(categorized_data):
