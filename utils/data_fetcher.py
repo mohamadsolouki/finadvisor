@@ -7,7 +7,6 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import time
-import requests
 
 
 @st.cache_data(ttl=7200)  # Cache for 2 hours to reduce API calls
@@ -18,11 +17,8 @@ def get_stock_data(ticker, period="5y"):
         try:
             time.sleep(0.5 * (attempt + 1))  # Increasing delay with each retry
             
-            # Create ticker with session
-            session = requests.Session()
-            session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-            
-            stock = yf.Ticker(ticker, session=session)
+            # Let yfinance handle session management (no custom session)
+            stock = yf.Ticker(ticker)
             hist = stock.history(period=period)
             
             if hist.empty:
@@ -56,11 +52,8 @@ def get_stock_info(ticker):
         try:
             time.sleep(0.5 * (attempt + 1))
             
-            # Create ticker with session
-            session = requests.Session()
-            session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-            
-            stock = yf.Ticker(ticker, session=session)
+            # Let yfinance handle session management (no custom session)
+            stock = yf.Ticker(ticker)
             info = stock.info
             
             # Check if info is valid
@@ -95,11 +88,8 @@ def get_historical_data(ticker, period="5y"):
         try:
             time.sleep(0.5 * (attempt + 1))
             
-            # Create ticker with session
-            session = requests.Session()
-            session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-            
-            stock = yf.Ticker(ticker, session=session)
+            # Let yfinance handle session management (no custom session)
+            stock = yf.Ticker(ticker)
             hist = stock.history(period=period)
             
             if hist.empty:
@@ -133,10 +123,8 @@ def get_esg_data(ticker):
         try:
             time.sleep(0.5 * (attempt + 1))
             
-            session = requests.Session()
-            session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-            
-            stock = yf.Ticker(ticker, session=session)
+            # Let yfinance handle session management (no custom session)
+            stock = yf.Ticker(ticker)
             esg_data = stock.sustainability
             return esg_data
         except Exception as e:
@@ -160,10 +148,8 @@ def get_competitor_data(ticker_list):
                 # Add delay between requests to avoid rate limiting
                 time.sleep(0.5 * (idx + 1) + (0.3 * attempt))
                 
-                session = requests.Session()
-                session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-                
-                comp_stock = yf.Ticker(ticker_sym, session=session)
+                # Let yfinance handle session management (no custom session)
+                comp_stock = yf.Ticker(ticker_sym)
                 comp_info = comp_stock.info
                 
                 # Validate we got data

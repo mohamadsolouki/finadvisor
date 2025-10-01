@@ -16,8 +16,8 @@ from utils.data_fetcher import get_stock_info
 from utils.visualizations import create_trend_chart, create_comparison_chart
 
 # Import page modules
-from pages.price_analysis import display_price_analysis
-from pages.esg_analysis import display_esg_analysis
+from page_modules.price_analysis import display_price_analysis
+from page_modules.esg_analysis import display_esg_analysis
 
 # Ticker symbol for Qualcomm
 TICKER = "QCOM"
@@ -156,8 +156,17 @@ def main():
     if 'last_fetch_time' not in st.session_state:
         st.session_state.last_fetch_time = None
     
-    # Sidebar
-    st.sidebar.title("Navigation")
+    # Sidebar Navigation
+    st.sidebar.title("📊 Navigation")
+    
+    # Navigation pages
+    page = st.sidebar.radio(
+        "Pages",
+        ["Executive Summary", "Financial Analysis", "Price Analysis", 
+         "ESG Analysis", "Industry Benchmarking", "Risk Analysis", "Custom Analysis"],
+        label_visibility="collapsed"
+    )
+    
     st.sidebar.markdown("---")
     
     # Load data
@@ -167,13 +176,6 @@ def main():
         full_data, categorized_data = load_and_categorize_data(data_path)
         analyzer = FinancialAnalyzer(categorized_data)
         report_gen = ReportGenerator(full_data, categorized_data, analyzer)
-        
-        # Sidebar options - Updated navigation structure
-        page = st.sidebar.radio(
-            "Select View",
-            ["Executive Summary", "Financial Analysis", "Price Analysis", 
-             "ESG Analysis", "Industry Benchmarking", "Risk Analysis", "Custom Analysis"]
-        )
         
         st.sidebar.markdown("---")
         
@@ -261,12 +263,12 @@ def main():
         
         elif page == "Industry Benchmarking":
             # Import here to avoid circular imports
-            from pages.industry_benchmarking import display_industry_benchmarking
+            from page_modules.industry_benchmarking import display_industry_benchmarking
             display_industry_benchmarking(TICKER, cached_info)
         
         elif page == "Risk Analysis":
             # Import here to avoid circular imports
-            from pages.risk_analysis import display_risk_analysis
+            from page_modules.risk_analysis import display_risk_analysis
             display_risk_analysis(TICKER, cached_info)
         
         elif page == "Custom Analysis":
