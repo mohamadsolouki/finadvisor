@@ -392,35 +392,32 @@ The comprehensive risk dashboard shows 4 key visualizations:
 4. **Return Distribution & VaR**: Shows the frequency distribution of daily returns with the VaR threshold
 
 **Your Task:**
-Provide a comprehensive, insightful risk analysis (600-800 words) that:
+Provide a comprehensive, narrative-style risk analysis (600-800 words) in a flowing, paragraph format.
 
-1. **Overall Risk Profile**: Characterize {ticker}'s risk level. Is it high, moderate, or low risk? How does the {annual_vol*100:.1f}% annualized volatility compare to typical stocks?
+Write your analysis as a cohesive risk narrative that:
 
-2. **Volatility Analysis**: Analyze the rolling volatility chart. Are there periods of elevated volatility? What might have caused volatility spikes? Is volatility trending up or down?
+1. **Opens with Risk Profile**: Begin by characterizing {ticker}'s overall risk level based on the **{annual_vol*100:.1f}% annualized volatility** and other key metrics. Establish whether this is high, moderate, or low risk compared to typical stocks and what this means for investors.
 
-3. **Drawdown Assessment**: Interpret the {max_drawdown:.2f}% maximum drawdown. How severe is this? Reference the drawdown chart - were there multiple significant drawdowns or one major event? How long did recovery take?
+2. **Tells the Volatility Story**: Flow naturally into analyzing the rolling volatility chart, discussing periods of elevated volatility, potential causes of volatility spikes, and whether volatility is trending up or down over time. Connect volatility patterns to market events or company-specific factors.
 
-4. **Value at Risk Interpretation**: Explain what the VaR ({var_95*100:.2f}%) and CVaR ({cvar_95*100:.2f}%) mean for investors. On a bad day (worst 5%), how much could be lost? Reference the return distribution chart.
+3. **Analyzes Drawdown Experience**: Transition smoothly into discussing the **{max_drawdown:.2f}% maximum drawdown**. Tell the story of what the drawdown chart reveals—whether there were multiple significant drawdowns or one major event, how severe these were, and how long recovery took. Connect this to investor experience during difficult periods.
 
-5. **Risk-Adjusted Performance**: Analyze the Sharpe Ratio ({sharpe_ratio:.2f}). Is the return adequate compensation for the risk? How does the {win_rate:.1f}% win rate factor in?
+4. **Interprets Value at Risk**: Weave in what the **VaR ({var_95*100:.2f}%)** and **CVaR ({cvar_95*100:.2f}%)** metrics mean for investors. Explain in practical terms what losses to expect on bad days (worst 5%) and reference the return distribution chart to illustrate the risk profile.
 
-6. **Asymmetric Risk**: Compare average positive days (+{avg_positive_return:.2f}%) vs negative days ({avg_negative_return:.2f}%). Is risk symmetric or are losses larger than gains?
+5. **Evaluates Risk-Adjusted Returns**: Naturally incorporate the **Sharpe Ratio ({sharpe_ratio:.2f})** analysis, discussing whether returns adequately compensate for risk. Connect the **{win_rate:.1f}% win rate** and compare average positive days (**+{avg_positive_return:.2f}%**) versus negative days (**{avg_negative_return:.2f}%**) to assess whether risk is symmetric or if losses tend to be larger than gains.
 
-7. **Portfolio Implications**: What does this risk profile mean for different investor types (conservative vs aggressive)? What position sizing would be appropriate?
+6. **Discusses Portfolio and Management Implications**: Build toward practical implications by discussing what this risk profile means for different investor types (conservative vs aggressive), appropriate position sizing, and specific risk management strategies (stop losses, position limits, diversification). Address how different market environments might affect this risk profile.
 
-8. **Risk Management Recommendations**: Based on all the data and charts, what risk management strategies should investors consider (stop losses, position limits, diversification, etc.)?
-
-9. **Market Conditions Impact**: How might different market environments affect this risk profile? What scenarios pose the greatest risk?
-
-10. **Forward-Looking Risk**: Based on the trends shown in the charts, is risk increasing or decreasing? What should investors monitor?
+7. **Concludes with Forward-Looking Assessment**: End with a synthesis paragraph about forward-looking risk based on trends shown in the charts—whether risk is increasing or decreasing, what investors should monitor, and key next steps for risk management.
 
 **Formatting Requirements:**
-- Use Markdown `###` headings that map directly to each numbered section above.
-- Present key arguments within each section as bullet points or short paragraphs separated by blank lines to maintain readability.
-- Bold important metrics (percentages, dates, ratios) to highlight critical figures.
-- Include a closing "### Summary" section with 2-3 bullets that recap the most important risk insights and recommended next steps.
+- Write in flowing paragraphs (5-7 paragraphs total), NOT bullet points or multiple heading sections
+- DO NOT use multiple heading levels (###) within your response - write as continuous prose
+- Bold important metrics, percentages, dates, and ratios: **35.2%**, **Sharpe: 1.25**, **-15.3% drawdown**
+- Use smooth transitions between paragraphs to maintain narrative flow
+- Write in an engaging, professional tone as if briefing a portfolio manager
 
-Be specific, cite actual numbers from the metrics, reference all four panels of the dashboard, and provide actionable risk management guidance. Write in a professional yet accessible tone suitable for institutional portfolio managers and sophisticated retail investors."""
+Be specific, cite actual numbers from the metrics, reference all four panels of the dashboard naturally within the narrative, and provide actionable risk management guidance."""
             
             try:
                 # Generate AI insight using OpenAI
@@ -437,7 +434,7 @@ Be specific, cite actual numbers from the metrics, reference all four panels of 
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a senior risk analyst and portfolio manager with deep expertise in quantitative risk analysis, volatility modeling, and portfolio risk management. Provide comprehensive, data-driven insights that reference specific metrics and all visualizations in the dashboard."
+                            "content": "You are a senior risk analyst and portfolio manager with deep expertise in quantitative risk analysis, volatility modeling, and portfolio risk management. Write in flowing, paragraph-based narrative format, NOT as bullet points or multiple sections with headings. Provide comprehensive, data-driven insights that reference specific metrics and all visualizations naturally within the narrative. Tell the story of the risk profile as a cohesive narrative with smooth transitions between ideas."
                         },
                         {
                             "role": "user",

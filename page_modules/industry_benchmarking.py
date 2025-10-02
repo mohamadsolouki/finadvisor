@@ -123,23 +123,30 @@ The analysis includes four key visualizations:
 4. ROE Comparison: Reflects how effectively companies generate returns on equity
 
 **Your Task:**
-Provide a comprehensive, insightful analysis (500-700 words) that:
+Provide a comprehensive, narrative-style competitive analysis (500-700 words) in a flowing, paragraph format.
 
-1. **Competitive Position**: Analyze {ticker}'s standing relative to competitors across all metrics shown in the charts. Reference specific companies and their positions.
+Write your analysis as a cohesive competitive narrative that:
 
-2. **Valuation Analysis**: Interpret the P/E ratio patterns. What does {ticker}'s valuation suggest about market expectations? Compare with Broadcom, AMD, and other peers shown in the P/E chart.
+1. **Opens with Competitive Standing**: Begin by establishing {ticker}'s overall position in the semiconductor competitive landscape, referencing specific companies and their positions across the key metrics shown in the charts.
 
-3. **Profitability & Efficiency**: Deep dive into the profit margin and ROE charts. Which companies show operational excellence? How does {ticker} compare? What might explain the differences?
+2. **Tells the Valuation Story**: Flow naturally into the valuation discussion by interpreting the P/E ratio patterns. Weave together what {ticker}'s valuation suggests about market expectations compared with Broadcom, AMD, and other peers, connecting this to broader market sentiment and growth expectations.
 
-4. **Market Cap Insights**: Analyze the market cap distribution shown in the chart. What does company size suggest about competitive advantages, market share, or investor confidence?
+3. **Analyzes Operational Performance**: Transition smoothly into profitability and efficiency by discussing the profit margin and ROE charts. Tell the story of which companies demonstrate operational excellence, how {ticker} compares, and what factors might explain the differences. Connect operational metrics to competitive advantages.
 
-5. **Strategic Implications**: Based on ALL the data and charts presented, what strategic position does {ticker} occupy? Is it a value play, growth story, or quality compounder?
+4. **Provides Market Context**: Naturally incorporate insights from the market cap distribution chart, discussing what company size reveals about competitive positioning, market share dynamics, and investor confidence across the peer group.
 
-6. **Investment Perspective**: Synthesize all metrics to provide a balanced view for investors. Which metrics are most favorable/concerning for {ticker}?
+5. **Synthesizes Strategic Position**: Throughout the narrative, build toward a synthesis of what strategic position {ticker} occupies—whether it's a value play, growth story, or quality compounder. Discuss industry trends revealed by the collective metrics.
 
-7. **Industry Trends**: What do these collective metrics reveal about the semiconductor industry competitive dynamics?
+6. **Concludes with Investment Perspective**: End with a balanced synthesis paragraph that ties together all the metrics to provide clear investment perspective, highlighting which metrics are most favorable or concerning for {ticker}.
 
-Be specific, cite actual numbers from the data, reference the visualizations, and provide actionable insights. Write in a professional yet accessible tone suitable for both institutional and retail investors."""
+**Formatting Requirements:**
+- Write in flowing paragraphs (4-6 paragraphs total), NOT bullet points or multiple heading sections
+- DO NOT use multiple heading levels (###) within your response - write as continuous prose
+- Bold key figures and metrics to make them stand out: **$150.25B**, **P/E: 25.3**, **ROE: 18.5%**
+- Use smooth transitions between paragraphs to maintain narrative flow
+- Write in an engaging, professional tone as if briefing an investor
+
+Be specific, cite actual numbers from the data, reference the visualizations naturally within the narrative, and provide actionable insights."""
                 
                 try:
                     # Generate AI insight using OpenAI directly with custom prompt
@@ -156,7 +163,7 @@ Be specific, cite actual numbers from the data, reference the visualizations, an
                         messages=[
                             {
                                 "role": "system",
-                                "content": "You are a senior financial analyst with deep expertise in the semiconductor industry. Provide comprehensive, data-driven insights that reference specific metrics and visualizations."
+                                "content": "You are a senior financial analyst with deep expertise in the semiconductor industry. Write in flowing, paragraph-based narrative format, NOT as bullet points or multiple sections with headings. Provide comprehensive, data-driven insights that reference specific metrics and visualizations naturally within the narrative. Tell the story of the competitive landscape as a cohesive narrative with smooth transitions between ideas."
                             },
                             {
                                 "role": "user",

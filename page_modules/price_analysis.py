@@ -297,49 +297,38 @@ def display_price_analysis(ticker, cached_info=None):
 {chr(10).join(big_moves_list) if big_moves_list else "  No major single-day movements >5%"}
 
 **Your Task:**
-Provide a comprehensive price trend and event analysis (600-800 words). ONLY use the data provided above.
+Provide a comprehensive, narrative-style price trend and event analysis (600-800 words) in a flowing, paragraph format. ONLY use the data provided above.
 
-1. **Timeframe Statement**: Start with "This analysis covers the period from {date_range_str}" and reference this timeframe throughout.
+Write your analysis as a cohesive narrative story that:
 
-2. **Overall Trend Narrative**: Describe the price trajectory using the yearly breakdown provided. Reference the actual start price (${start_price:.2f}), end price (${end_price:.2f}), and total return ({total_return:+.2f}%).
+1. **Opens with Context**: Begin by stating "This analysis covers the period from {date_range_str}" and immediately introduce the overall price journey - starting at ${start_price:.2f}, ending at ${end_price:.2f}, for a total return of {total_return:+.2f}%.
 
-3. **Key Turning Points**: Use ONLY the turning points listed above. For each peak or trough:
-   - Reference the EXACT date and price provided
-   - Discuss likely catalysts (earnings, products, macro events) in GENERAL terms
-   - Avoid making up specific dates or prices not in the data
+2. **Tells the Price Story Chronologically**: Walk through the price movements year by year or phase by phase, weaving together:
+   - The yearly performance figures provided (actual start/end prices and returns for each year)
+   - The key turning points (peaks and troughs with their exact dates and prices)
+   - The significant daily moves (>5% movements with exact dates and percentage changes)
+   - Connect these data points into a flowing narrative about what happened and why it likely occurred
 
-4. **Year-by-Year Analysis**: For each year in the yearly performance data:
-   - Describe the annual performance using the exact figures provided
-   - Discuss broader market/industry context for that year
-   - Avoid inventing specific events or dates
+3. **Provides Context Without Inventing Details**: 
+   - Discuss likely catalysts in GENERAL terms (e.g., "likely related to earnings season," "possibly driven by sector-wide trends," "coinciding with broader market volatility")
+   - Reference broader market and industry context for each period
+   - Use approximate timeframes (e.g., "early 2022," "throughout 2023," "the second half of the year") when specific dates aren't provided
+   - DO NOT invent specific event dates, news items, or prices not in the data
 
-5. **Significant Daily Moves**: Analyze the >5% single-day movements listed:
-   - Reference the EXACT dates and changes provided
-   - Suggest likely types of catalysts (e.g., "likely earnings-related" or "sector-wide movement")
-   - DO NOT invent specific news events or precise prices
+4. **Highlights Key Observations**: Throughout the narrative, naturally incorporate:
+   - The price range: from the low of ${min_price:.2f} on {min_price_date} to the peak of ${max_price:.2f} on {max_price_date}
+   - The {((max_price - min_price) / min_price * 100):.1f}% range during the period
+   - Where the current price (${end_price:.2f}) sits relative to these extremes
+   - Patterns that emerge from the data (volatility, trends, reversals)
 
-6. **Price Range Context**: 
-   - Use the peak (${max_price:.2f} on {max_price_date}) and low (${min_price:.2f} on {min_price_date})
-   - Discuss the {((max_price - min_price) / min_price * 100):.1f}% range during the period
-   - Connect to broader market conditions in general terms
-
-7. **Trend Phases**: Based on the data provided, identify:
-   - Growth phases (when and approximate magnitude)
-   - Decline phases (when and approximate magnitude)
-   - Consolidation periods
-   - Use year/quarter references, not specific dates you don't have
-
-8. **Current Position**: Where does the ending price (${end_price:.2f}) sit relative to the peak and low?
-
-9. **Pattern Recognition**: What patterns emerge from the yearly data and turning points?
-
-10. **Context and Outlook**: Based on the {total_return:+.2f}% return and trend pattern, what trajectory has emerged?
+5. **Concludes with Synthesis**: End with a summary paragraph that ties together the overall trajectory, the {total_return:+.2f}% return, and what patterns or themes emerged during this period.
 
 **Formatting Requirements:**
-- Structure the response in Markdown with `###` headings that correspond to each numbered item above.
-- Within each section, break supporting details into concise bullet points (one or two sentences each).
-- Bold all explicit figures (dates, prices, percentages) so they stand out.
-- Separate sections with blank lines to ensure Streamlit renders the Markdown cleanly.
+- Write in flowing paragraphs (3-6 paragraphs total), NOT bullet points or numbered sections
+- DO NOT use multiple heading levels (###) within your response - write as continuous prose
+- Bold key figures (dates, prices, percentages) to make them stand out: **$150.25**, **+25.3%**, **March 15, 2023**
+- Use smooth transitions between paragraphs to maintain narrative flow
+- Write in an engaging, professional tone as if briefing an investor
 
 **CRITICAL RULES - AVOID HALLUCINATION:**
 - ✅ DO: Use exact dates/prices from the data above
@@ -366,7 +355,7 @@ Provide a comprehensive price trend and event analysis (600-800 words). ONLY use
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a senior equity research analyst. Your TOP PRIORITY is DATA ACCURACY - only reference dates and prices explicitly provided in the prompt. When discussing events, use general terms and timeframes unless you have specific data. Never make up or estimate specific dates or prices. If you lack specific information, acknowledge it. Focus on analyzing trends and patterns using only the factual data provided."
+                            "content": "You are a senior equity research analyst writing narrative investment reports. Your TOP PRIORITY is DATA ACCURACY - only reference dates and prices explicitly provided in the prompt. Write in flowing, paragraph-based narrative format, NOT as bullet points or multiple sections with headings. When discussing events, use general terms and timeframes unless you have specific data. Never make up or estimate specific dates or prices. If you lack specific information, acknowledge it. Tell the story of the stock's price movement as a cohesive narrative with smooth transitions between ideas."
                         },
                         {
                             "role": "user",

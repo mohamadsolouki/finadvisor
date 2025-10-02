@@ -534,34 +534,34 @@ The projection dashboard shows 4 key charts:
 4. **EPS Projection**: Earnings per share historical and projected path
 
 **Your Task:**
-Provide a comprehensive financial projection analysis (700-900 words) that covers:
+Provide a comprehensive, narrative-style financial projection analysis (700-900 words) in a flowing, paragraph format.
 
-1. **Projection Methodology Assessment**: Evaluate the historical growth rate method used. What are its strengths and limitations? Is {ticker}'s historical growth rate sustainable or likely to change?
+Write your analysis as a cohesive projection narrative that:
 
-2. **Revenue Projection Analysis**: Analyze the {growth_rates.get('revenue', 0)*100:.2f}% revenue growth assumption. Reference the revenue chart - is this growth rate conservative, aggressive, or reasonable? What factors could accelerate or decelerate revenue growth?
+1. **Opens with Methodology and Foundation**: Begin by evaluating the historical growth rate method used for these projections, discussing its strengths and limitations. Establish whether {ticker}'s historical growth rate is sustainable or likely to change, setting the foundation for the analysis.
 
-3. **Profitability Trajectory**: Examine the net income and operating income projections. Are margins expanding or contracting? Is the {growth_rates.get('net_income', 0)*100:.2f}% net income growth rate aligned with revenue growth? Reference both profitability charts.
+2. **Analyzes the Revenue Story**: Flow naturally into the revenue projection analysis, discussing the **{growth_rates.get('revenue', 0)*100:.2f}% revenue growth** assumption. Reference the revenue chart to assess whether this growth rate is conservative, aggressive, or reasonable, and weave in factors that could accelerate or decelerate revenue growth.
 
-4. **EPS Growth Analysis**: Evaluate the projected EPS path shown in the chart. The {growth_rates.get('eps', 0)*100:.2f}% EPS growth - is this achievable? What role do share buybacks, margin expansion, or other factors play?
+3. **Examines Profitability Trajectory**: Transition smoothly into profitability by examining the net income and operating income projections. Discuss whether margins are expanding or contracting, whether the **{growth_rates.get('net_income', 0)*100:.2f}% net income growth** aligns with revenue growth, and tell the story shown in both profitability charts.
 
-5. **Comparison with Market Expectations**: Compare our projections with:
-   - Analyst price target (implies certain growth expectations)
-   - Forward P/E ratio (market's growth assumptions)
-   - PEG ratio (growth vs valuation)
-   
-   Are our projections more optimistic or conservative than the market? Explain the differences.
+4. **Evaluates EPS Path and Drivers**: Naturally incorporate the EPS projection analysis, evaluating the **{growth_rates.get('eps', 0)*100:.2f}% EPS growth** shown in the chart. Discuss what makes this achievable or challenging, and the role of share buybacks, margin expansion, or other factors.
 
-6. **Key Assumptions & Risks**: What assumptions underpin these projections? What could cause actual results to differ significantly from projections (both upside and downside scenarios)?
+5. **Compares with Market Expectations**: Weave in a comparison with market expectations by discussing the analyst price target, forward P/E ratio, and PEG ratio. Explain whether these projections are more optimistic or conservative than the market and what this divergence means.
 
-7. **Industry & Competitive Context**: How do these growth rates compare to the semiconductor industry? Is {ticker} gaining or losing market share at these growth rates?
+6. **Addresses Assumptions, Risks, and Scenarios**: Throughout the narrative, acknowledge key assumptions underpinning these projections and what could cause actual results to differ. Discuss industry context, competitive positioning, and how these growth rates compare to the semiconductor industry. Naturally incorporate discussion of bull case and bear case scenarios.
 
-8. **Valuation Implications**: Based on the projected financials, does the current stock price and forward P/E seem reasonable? If the projections materialize, what might the stock be worth in {projection_years} years?
+7. **Synthesizes Valuation and Investment Implications**: Build toward a synthesis of valuation implications—whether the current stock price and forward P/E seem reasonable given these projections, and what the stock might be worth in **{projection_years} years** if projections materialize.
 
-9. **Alternative Scenarios**: What would bull case and bear case projections look like? What different growth rates would be more/less aggressive?
+8. **Concludes with Investment Thesis**: End with a clear synthesis paragraph that ties together the investment thesis based on the projection analysis and comparison with market expectations. Provide balanced perspective on whether the projections are achievable and attractive for investors.
 
-10. **Investment Implications**: Based on the projection analysis and comparison with market expectations, what's the investment thesis? Are the projections achievable and attractive for investors?
+**Formatting Requirements:**
+- Write in flowing paragraphs (6-8 paragraphs total), NOT bullet points or multiple heading sections
+- DO NOT use multiple heading levels (###) within your response - write as continuous prose
+- Bold key figures, growth rates, and metrics: **$50.2B revenue**, **15.3% growth**, **Forward P/E: 22.5**
+- Use smooth transitions between paragraphs to maintain narrative flow
+- Write in an engaging, professional tone as if writing an equity research report
 
-Be specific, cite actual numbers from the projections and metrics, reference all four projection charts, compare with market expectations, and provide balanced analysis. Acknowledge both opportunities and risks. Write in a professional tone suitable for equity research reports and institutional investors."""
+Be specific, cite actual numbers from the projections and metrics, reference all four projection charts naturally within the narrative, compare with market expectations, and provide balanced analysis that acknowledges both opportunities and risks."""
             
             try:
                 # Generate AI insight using OpenAI
@@ -578,7 +578,7 @@ Be specific, cite actual numbers from the projections and metrics, reference all
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a senior financial analyst and equity research professional with deep expertise in financial modeling, forecasting, and valuation. Provide comprehensive, balanced analysis that compares internal projections with market expectations and explains differences professionally."
+                            "content": "You are a senior financial analyst and equity research professional with deep expertise in financial modeling, forecasting, and valuation. Write in flowing, paragraph-based narrative format, NOT as bullet points or multiple sections with headings. Provide comprehensive, balanced analysis that compares internal projections with market expectations naturally within the narrative. Tell the story of the financial projections as a cohesive narrative with smooth transitions between ideas, as you would in a professional equity research report."
                         },
                         {
                             "role": "user",

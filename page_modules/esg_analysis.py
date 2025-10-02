@@ -273,28 +273,32 @@ ESG scores are RISK scores where LOWER is BETTER:
 - 40+: Severe Risk
 
 **Your Task:**
-Provide a comprehensive, insightful ESG analysis (500-700 words) that:
+Provide a comprehensive, narrative-style ESG analysis (500-700 words) in a flowing, paragraph format.
 
-1. **Overall ESG Risk Profile**: Analyze {ticker}'s total ESG score. What does it reveal about the company's sustainability risk exposure and management quality?
+Write your analysis as a cohesive narrative that:
 
-2. **Component Analysis**: Deep dive into the three pillars shown in the breakdown chart:
-   - Environment: What does the score suggest about climate risk, resource management, and environmental practices?
-   - Social: Evaluate workforce, community, product safety, and social impact practices
-   - Governance: Assess board structure, ethics, transparency, and corporate governance quality
+1. **Opens with ESG Risk Profile**: Begin by analyzing {ticker}'s total ESG score and what it reveals about the company's overall sustainability risk exposure and management quality. Remember that LOWER scores indicate BETTER ESG risk management.
 
-3. **Competitive Positioning**: Reference the industry comparison chart. How does {ticker} stack up against Broadcom, AMD, Marvell, Intel, and Texas Instruments? Who are the ESG leaders and laggards in this peer group?
+2. **Explores the Three Pillars**: Flow naturally into a discussion of the ESG breakdown chart, weaving together:
+   - Environment score and what it suggests about climate risk, resource management, and environmental practices
+   - Social score reflecting workforce, community, product safety, and social impact
+   - Governance score indicating board structure, ethics, transparency, and corporate governance
+   Connect these insights into a cohesive assessment rather than treating them as separate bullet points.
 
-4. **Industry Context**: What does the semiconductor industry ESG landscape look like? Are there common challenges or opportunities?
+3. **Provides Competitive Context**: Naturally transition into how {ticker} compares with peers shown in the industry comparison chart (Broadcom, AMD, Marvell, Intel, Texas Instruments). Identify ESG leaders and laggards in this peer group and discuss what the competitive landscape reveals about industry-wide ESG challenges and opportunities.
 
-5. **Risk Assessment**: Identify the most significant ESG risks for {ticker} based on the data. Which pillar needs the most attention?
+4. **Assesses Risk and Opportunity**: Throughout the narrative, identify the most significant ESG risks for {ticker}, highlighting which pillar needs attention while also recognizing strengths and improvement opportunities. Discuss what these patterns mean for long-term sustainability and risk management.
 
-6. **Strengths & Opportunities**: What are {ticker}'s ESG strengths? Where are the opportunities for improvement?
+5. **Concludes with Investment Implications**: End with a synthesis paragraph that ties together the investment implications of these ESG metrics and what forward-looking ESG trends stakeholders should monitor for {ticker} and the semiconductor industry.
 
-7. **Investment Implications**: How should investors interpret these ESG metrics? What do they mean for long-term sustainability and risk management?
+**Formatting Requirements:**
+- Write in flowing paragraphs (4-6 paragraphs total), NOT bullet points or multiple heading sections
+- DO NOT use multiple heading levels (###) within your response - write as continuous prose
+- Bold key scores and metrics to make them stand out: **15.2**, **Low Risk**, **Environment: 8.5**
+- Use smooth transitions between paragraphs to maintain narrative flow
+- Write in an engaging, professional tone as if briefing an ESG-focused investor
 
-8. **Forward-Looking Perspective**: What ESG trends should stakeholders monitor for {ticker} and the semiconductor industry?
-
-Be specific, cite actual scores from the data, reference the visualizations and peer comparisons, and provide actionable insights. Remember that LOWER scores indicate BETTER ESG risk management. Write in a professional yet accessible tone suitable for institutional investors, ESG-focused funds, and sustainability-conscious stakeholders."""
+Be specific, cite actual scores from the data, reference the visualizations and peer comparisons naturally within the narrative, and provide actionable insights."""
                     
                     try:
                         # Generate AI insight using OpenAI directly with custom prompt
@@ -311,7 +315,7 @@ Be specific, cite actual scores from the data, reference the visualizations and 
                             messages=[
                                 {
                                     "role": "system",
-                                    "content": "You are a senior ESG analyst with deep expertise in sustainability, corporate governance, and responsible investing. Provide comprehensive, data-driven insights that reference specific metrics and visualizations. Remember that ESG scores are risk scores where lower is better."
+                                    "content": "You are a senior ESG analyst with deep expertise in sustainability, corporate governance, and responsible investing. Write in flowing, paragraph-based narrative format, NOT as bullet points or multiple sections with headings. Provide comprehensive, data-driven insights that reference specific metrics and visualizations naturally within the narrative. Remember that ESG scores are risk scores where lower is better. Tell the story of the company's ESG performance as a cohesive narrative with smooth transitions between ideas."
                                 },
                                 {
                                     "role": "user",
