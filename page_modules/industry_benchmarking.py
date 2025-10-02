@@ -97,6 +97,7 @@ def display_industry_benchmarking(ticker, cached_info):
         
         # Import AI insights generator
         from utils.ai_insights_generator import AIInsightsGenerator
+        from utils.text_utils import normalize_markdown_spacing
         from pathlib import Path
         
         # Initialize AI generator
@@ -166,16 +167,13 @@ Be specific, cite actual numbers from the data, reference the visualizations, an
                         max_tokens=1500
                     )
                     
-                    ai_insight = response.choices[0].message.content.strip()
+                    ai_insight = normalize_markdown_spacing(response.choices[0].message.content.strip())
                     
-                    # Display AI insight in an attractive format
-                    st.markdown(f"""
-                    <div style="background-color: #f0f8ff; padding: 25px; border-radius: 10px; 
-                                border-left: 5px solid #1f77b4; line-height: 1.8; 
-                                color: #212529; white-space: pre-wrap;">
-                    {ai_insight}
-                    </div>
-                    """, unsafe_allow_html=True)
+                    # Display AI insight using Streamlit's native components
+                    st.markdown("---")
+                    st.info("📊 AI-Generated Competitive Analysis")
+                    st.markdown(ai_insight)
+                    st.markdown("---")
                     
                     # Add disclaimer
                     st.caption("💡 AI-generated analysis based on current market data. This analysis references all charts and metrics shown above. Always conduct additional research before making investment decisions.")

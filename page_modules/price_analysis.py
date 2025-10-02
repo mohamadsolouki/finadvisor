@@ -9,6 +9,7 @@ import numpy as np
 import plotly.graph_objects as go
 from utils.data_fetcher import get_historical_data, get_stock_info
 from utils.visualizations import create_candlestick_chart, create_rsi_chart
+from utils.text_utils import normalize_markdown_spacing
 
 
 def display_price_analysis(ticker, cached_info=None):
@@ -188,8 +189,8 @@ def display_price_analysis(ticker, cached_info=None):
     st.markdown("---")
     
     # AI-Powered Price Analysis
-    st.markdown("### 🤖 AI-Powered Price & Technical Analysis")
-    st.markdown("Comprehensive interpretation of price trends, technical indicators, and trading patterns")
+    st.markdown("### 🤖 AI-Powered Price Trend & News Analysis")
+    st.markdown("Analysis of price movements and correlation with company events and market trends")
     
     # Import AI insights generator
     from utils.ai_insights_generator import AIInsightsGenerator
@@ -200,119 +201,155 @@ def display_price_analysis(ticker, cached_info=None):
     ai_generator = AIInsightsGenerator(data_dir)
     
     if ai_generator.enabled:
-        with st.spinner("🧠 Generating comprehensive price analysis..."):
+        with st.spinner("🧠 Analyzing price trends and company events..."):
             # Get company name from info
             company_name = info.get('longName', info.get('shortName', ticker))
             
-            # Use the same hist data that's being displayed in charts
-            # Filter data from 2020 onwards
-            hist_from_2020 = hist[hist.index >= '2020-01-01']
-            
-            # Get 2020 baseline
-            start_2020 = None
-            price_2020 = None
-            if not hist_from_2020.empty:
-                start_2020 = hist_from_2020.index[0]
-                price_2020 = hist_from_2020['Close'].iloc[0]
-            else:
-                # If no 2020 data, use earliest available
-                start_2020 = hist.index[0]
-                price_2020 = hist['Close'].iloc[0]
-            
-            # Calculate key statistics from the displayed data
-            volatility = hist['Close'].pct_change().std() * (252 ** 0.5) * 100  # Annualized
-            avg_daily_volume = hist['Volume'].mean()
+            # Calculate key price metrics
+            start_price = hist['Close'].iloc[0]
+            end_price = hist['Close'].iloc[-1]
             max_price = hist['High'].max()
             min_price = hist['Low'].min()
+            total_return = ((end_price - start_price) / start_price) * 100
             
-            # Get latest values from displayed data
-            latest_ma20 = hist['MA20'].iloc[-1] if 'MA20' in hist.columns and not pd.isna(hist['MA20'].iloc[-1]) else None
-            latest_ma50 = hist['MA50'].iloc[-1] if 'MA50' in hist.columns and not pd.isna(hist['MA50'].iloc[-1]) else None
-            latest_ma200 = hist['MA200'].iloc[-1] if 'MA200' in hist.columns and not pd.isna(hist['MA200'].iloc[-1]) else None
+            # Find max price date and min price date
+            max_price_date = hist['High'].idxmax().strftime('%Y-%m-%d')
+            min_price_date = hist['Low'].idxmin().strftime('%Y-%m-%d')
+            max_price_actual = hist.loc[hist['High'].idxmax(), 'Close']
+            min_price_actual = hist.loc[hist['Low'].idxmin(), 'Close']
             
-            # Count trend signals
-            bullish_signals = sum([
-                current_price > latest_ma20 if latest_ma20 else False,
-                current_price > latest_ma50 if latest_ma50 else False,
-                current_price > latest_ma200 if latest_ma200 else False,
-                current_rsi < 70 and current_rsi > 50
-            ])
+            # Identify significant price movements (>5% in a day)
+            hist['Daily_Change'] = hist['Close'].pct_change() * 100
+            big_moves = hist[abs(hist['Daily_Change']) > 5].copy()
+            big_moves_list = []
+            for date, row in big_moves.head(15).iterrows():  # Top 15 significant moves
+                big_moves_list.append(f"  • {date.strftime('%Y-%m-%d')}: {row['Daily_Change']:+.2f}% (Close: ${row['Close']:.2f})")
             
-            # Prepare comprehensive context
-            price_2020_str = f"${price_2020:.2f}" if price_2020 else "N/A"
-            change_from_2020 = ((current_price - price_2020) / price_2020 * 100) if price_2020 else None
-            change_from_2020_str = f"+{change_from_2020:.1f}%" if change_from_2020 and change_from_2020 > 0 else f"{change_from_2020:.1f}%" if change_from_2020 else "N/A"
+            # Get yearly performance if data spans multiple years
+            yearly_performance = []
+            years_in_data = sorted(hist.index.year.unique())
+            for year in years_in_data:
+                year_data = hist[hist.index.year == year]
+                if len(year_data) > 0:
+                    year_start_price = year_data['Close'].iloc[0]
+                    year_end_price = year_data['Close'].iloc[-1]
+                    year_high = year_data['High'].max()
+                    year_low = year_data['Low'].min()
+                    year_return = ((year_end_price - year_start_price) / year_start_price) * 100
+                    yearly_performance.append(
+                        f"  • {year}: Started at ${year_start_price:.2f}, ended at ${year_end_price:.2f} "
+                        f"(Return: {year_return:+.2f}%, High: ${year_high:.2f}, Low: ${year_low:.2f})"
+                    )
             
-            # Pre-format values for context
-            ma20_str = f"${latest_ma20:.2f}" if latest_ma20 else "N/A"
-            ma50_str = f"${latest_ma50:.2f}" if latest_ma50 else "N/A"
-            ma200_str = f"${latest_ma200:.2f}" if latest_ma200 else "N/A"
-            volatility_str = f"{volatility:.1f}%"
-            returns_1m_str = f"{returns_1m:+.2f}%" if returns_1m is not None else "N/A"
-            returns_3m_str = f"{returns_3m:+.2f}%" if returns_3m is not None else "N/A"
-            returns_1y_str = f"{returns_1y:+.2f}%" if returns_1y is not None else "N/A"
+            # Find local peaks and troughs (significant turning points)
+            # Look for points where price changed direction significantly
+            hist['Price_Change_30d'] = hist['Close'].pct_change(30) * 100
+            turning_points = []
             
-            # Build comprehensive prompt
-            date_range_str = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
-            prompt = f"""You are a senior equity research analyst and technical analyst specializing in stock price analysis and technical indicators.
+            # Find peaks (local maxima)
+            for i in range(30, len(hist)-30):
+                window = hist.iloc[i-30:i+30]
+                if hist['Close'].iloc[i] == window['Close'].max():
+                    date = hist.index[i].strftime('%Y-%m-%d')
+                    price = hist['Close'].iloc[i]
+                    turning_points.append(f"  • Peak on {date}: ${price:.2f}")
+            
+            # Find troughs (local minima)
+            for i in range(30, len(hist)-30):
+                window = hist.iloc[i-30:i+30]
+                if hist['Close'].iloc[i] == window['Close'].min():
+                    date = hist.index[i].strftime('%Y-%m-%d')
+                    price = hist['Close'].iloc[i]
+                    turning_points.append(f"  • Trough on {date}: ${price:.2f}")
+            
+            # Limit to top 10 most significant
+            turning_points = turning_points[:10]
+            
+            # Build comprehensive prompt focused on trends and events
+            date_range_str = f"{start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')}"
+            prompt = f"""You are a senior equity research analyst specializing in analyzing stock price trends and correlating them with company news and market events.
 
-**{company_name} ({ticker}) - Price Analysis for Period: {date_range_str}**
+**{company_name} ({ticker}) - Price Trend Analysis**
 
-**Long-Term Trend (2020-Present):**
-- Price in 2020: {price_2020_str}
-- Current Price: ${current_price:.2f}
-- Total Change from 2020: {change_from_2020_str}
+**CRITICAL: Your analysis must be specifically for the period from {date_range_str}. State this timeframe at the beginning.**
 
-**Current Technical Indicators:**
-- RSI (14): {current_rsi:.1f}
-- 20-Day MA: {ma20_str}
-- 50-Day MA: {ma50_str}
-- 200-Day MA: {ma200_str}
-- Bollinger Band Position: {bb_position*100:.1f}%
-- Bullish Signals Active: {bullish_signals}/4
+**⚠️ STRICT DATA ACCURACY REQUIREMENTS:**
+- ONLY reference dates and prices explicitly provided in the data below
+- DO NOT make up or estimate specific dates or price levels
+- If discussing general trends, use approximate timeframes (e.g., "mid-2022" not "November 11, 2022")
+- When referencing prices, ONLY use the exact figures provided below
+- If you don't have specific data about an event, acknowledge the limitation
 
-**Price Metrics:**
-- Period High: ${max_price:.2f}
-- Period Low: ${min_price:.2f}
-- Annualized Volatility: {volatility_str}
-- Average Daily Volume: {avg_daily_volume/1e6:.1f}M shares
+**Price Performance Summary:**
+- Starting Price ({start_date.strftime('%Y-%m-%d')}): ${start_price:.2f}
+- Ending Price ({end_date.strftime('%Y-%m-%d')}): ${end_price:.2f}
+- Total Return: {total_return:+.2f}%
+- Peak Price: ${max_price:.2f} on {max_price_date} (Close: ${max_price_actual:.2f})
+- Lowest Price: ${min_price:.2f} on {min_price_date} (Close: ${min_price_actual:.2f})
 
-**Performance Returns:**
-- 1 Month: {returns_1m_str}
-- 3 Month: {returns_3m_str}
-- 1 Year: {returns_1y_str}
+**Yearly Performance Breakdown:**
+{chr(10).join(yearly_performance) if yearly_performance else "  Single year analysis"}
 
-**Visual Context:**
-The analysis includes four key visualizations:
-1. **Candlestick Chart**: Shows price action with moving averages and Bollinger Bands
-2. **RSI Chart**: Momentum indicator showing overbought/oversold conditions
-3. **Volume Chart**: Trading volume patterns over time
-4. **Returns Distribution**: Daily returns volatility pattern
+**Major Turning Points (Local Peaks and Troughs):**
+{chr(10).join(turning_points) if turning_points else "  No significant local extrema detected"}
+
+**Significant Single-Day Movements (>5%):**
+{chr(10).join(big_moves_list) if big_moves_list else "  No major single-day movements >5%"}
 
 **Your Task:**
-Provide a comprehensive price and technical analysis (700-900 words) that covers:
+Provide a comprehensive price trend and event analysis (600-800 words). ONLY use the data provided above.
 
-1. **Long-Term Trend Analysis**: Analyze the {change_from_2020_str} change from 2020 baseline. What does this trajectory tell us over the {date_range_str} period? Reference the candlestick chart.
+1. **Timeframe Statement**: Start with "This analysis covers the period from {date_range_str}" and reference this timeframe throughout.
 
-2. **Recent Price Action**: Examine the price trend over the selected period. Uptrend, downtrend, or consolidation? Reference candlestick chart.
+2. **Overall Trend Narrative**: Describe the price trajectory using the yearly breakdown provided. Reference the actual start price (${start_price:.2f}), end price (${end_price:.2f}), and total return ({total_return:+.2f}%).
 
-3. **Technical Indicators**: Evaluate RSI at {current_rsi:.1f}, price vs moving averages, and Bollinger Band position. What do they signal?
+3. **Key Turning Points**: Use ONLY the turning points listed above. For each peak or trough:
+   - Reference the EXACT date and price provided
+   - Discuss likely catalysts (earnings, products, macro events) in GENERAL terms
+   - Avoid making up specific dates or prices not in the data
 
-4. **Volume Analysis**: Analyze trading volume patterns. Is volume confirming price moves?
+4. **Year-by-Year Analysis**: For each year in the yearly performance data:
+   - Describe the annual performance using the exact figures provided
+   - Discuss broader market/industry context for that year
+   - Avoid inventing specific events or dates
 
-5. **Support/Resistance**: Identify key levels near ${min_price:.2f} (support) and ${max_price:.2f} (resistance).
+5. **Significant Daily Moves**: Analyze the >5% single-day movements listed:
+   - Reference the EXACT dates and changes provided
+   - Suggest likely types of catalysts (e.g., "likely earnings-related" or "sector-wide movement")
+   - DO NOT invent specific news events or precise prices
 
-6. **Volatility Assessment**: With {volatility_str} volatility, assess risk level. Reference returns distribution.
+6. **Price Range Context**: 
+   - Use the peak (${max_price:.2f} on {max_price_date}) and low (${min_price:.2f} on {min_price_date})
+   - Discuss the {((max_price - min_price) / min_price * 100):.1f}% range during the period
+   - Connect to broader market conditions in general terms
 
-7. **Performance Context**: Compare 1M, 3M, and 1Y returns. Which timeframe shows strength?
+7. **Trend Phases**: Based on the data provided, identify:
+   - Growth phases (when and approximate magnitude)
+   - Decline phases (when and approximate magnitude)
+   - Consolidation periods
+   - Use year/quarter references, not specific dates you don't have
 
-8. **Trading Signals**: Based on {bullish_signals}/4 signals and all indicators, what's the technical setup?
+8. **Current Position**: Where does the ending price (${end_price:.2f}) sit relative to the peak and low?
 
-9. **Risk Considerations**: Key price levels to watch and potential volatility triggers.
+9. **Pattern Recognition**: What patterns emerge from the yearly data and turning points?
 
-10. **Investment Implications**: Guidance for traders vs long-term investors.
+10. **Context and Outlook**: Based on the {total_return:+.2f}% return and trend pattern, what trajectory has emerged?
 
-Be specific with prices and values, reference all four charts, and provide actionable insights."""
+**Formatting Requirements:**
+- Structure the response in Markdown with `###` headings that correspond to each numbered item above.
+- Within each section, break supporting details into concise bullet points (one or two sentences each).
+- Bold all explicit figures (dates, prices, percentages) so they stand out.
+- Separate sections with blank lines to ensure Streamlit renders the Markdown cleanly.
+
+**CRITICAL RULES - AVOID HALLUCINATION:**
+- ✅ DO: Use exact dates/prices from the data above
+- ✅ DO: Discuss general industry trends and macro events
+- ✅ DO: Use approximate timeframes like "early 2022" or "throughout 2023"
+- ❌ DO NOT: Invent specific dates like "November 11, 2022" unless it appears in the data
+- ❌ DO NOT: Make up specific price levels not provided above
+- ❌ DO NOT: Claim specific news events without qualification (use "likely" or "possibly")
+- ❌ DO NOT: Discuss technical indicators (RSI, moving averages, Bollinger Bands)
+- ❌ DO NOT: Repeat metrics already shown on the page above"""
 
             try:
                 # Generate AI insight using OpenAI
@@ -329,7 +366,7 @@ Be specific with prices and values, reference all four charts, and provide actio
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a senior equity research analyst and technical analyst with deep expertise in chart analysis, technical indicators, and trading patterns. Provide comprehensive, data-driven insights that reference specific price levels and all visualizations."
+                            "content": "You are a senior equity research analyst. Your TOP PRIORITY is DATA ACCURACY - only reference dates and prices explicitly provided in the prompt. When discussing events, use general terms and timeframes unless you have specific data. Never make up or estimate specific dates or prices. If you lack specific information, acknowledge it. Focus on analyzing trends and patterns using only the factual data provided."
                         },
                         {
                             "role": "user",
@@ -340,22 +377,33 @@ Be specific with prices and values, reference all four charts, and provide actio
                     max_tokens=2000
                 )
                 
-                ai_insight = response.choices[0].message.content.strip()
+                ai_insight = normalize_markdown_spacing(response.choices[0].message.content.strip())
                 
-                # Display AI insight in an attractive format
-                st.markdown(f"""
-                <div style="background-color: #e3f2fd; padding: 25px; border-radius: 10px; 
-                            border-left: 5px solid #2196f3; line-height: 1.8; 
-                            color: #212529; white-space: pre-wrap;">
-                {ai_insight}
-                </div>
+                # Display AI insight using Streamlit's native styling
+                # Add custom CSS for the container but render markdown separately
+                st.markdown("""
+                <style>
+                div[data-testid="stMarkdownContainer"] > div.ai-analysis-container {
+                    background-color: #e3f2fd;
+                    padding: 20px;
+                    border-radius: 10px;
+                    border-left: 5px solid #2196f3;
+                    margin: 10px 0;
+                }
+                </style>
                 """, unsafe_allow_html=True)
                 
+                # Use st.info for automatic styling, or plain markdown
+                st.markdown("---")
+                st.info("📊 AI-Generated Price Trend Analysis")
+                st.markdown(ai_insight)
+                st.markdown("---")
+                
                 # Add disclaimer
-                st.caption("💡 AI-generated price and technical analysis based on historical data and indicators. This analysis references all charts and metrics shown above. Technical analysis is one tool among many - conduct comprehensive research before investing. Past performance doesn't guarantee future results.")
+                st.caption("💡 AI-generated price trend analysis based on historical price movements and correlation with company events and market conditions. This narrative explains what happened during the selected timeframe and potential catalysts. Always verify events with official sources and conduct comprehensive research before investing. Past performance doesn't guarantee future results.")
                 
             except Exception as e:
                 st.warning(f"⚠️ Unable to generate AI price analysis: {str(e)}")
                 st.info("Please ensure your OpenAI API key is properly configured in the .env file.")
     else:
-        st.info("🔑 **AI Price Analysis Unavailable**: Configure your OpenAI API key in the .env file to enable comprehensive AI-powered price and technical analysis that examines all charts, indicators, and long-term trends from 2020 to present.")
+        st.info("🔑 **AI Price Trend Analysis Unavailable**: Configure your OpenAI API key in the .env file to enable AI-powered analysis of price trends and correlation with company events, news, and market catalysts during your selected timeframe.")

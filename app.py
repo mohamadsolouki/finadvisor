@@ -15,6 +15,7 @@ from utils.report_generator import ReportGenerator
 from utils.data_fetcher import get_stock_info
 from utils.visualizations import create_trend_chart, create_comparison_chart
 from utils.ai_insights_generator import AIInsightsGenerator
+from utils.text_utils import normalize_markdown_spacing
 
 # Import page modules
 from page_modules.price_analysis import display_price_analysis
@@ -172,26 +173,16 @@ def display_category_data(category_name, data, analyzer, ai_generator=None):
             if result.get('error'):
                 st.error(result['insight'])
             else:
-                insight_text = result['insight']
+                insight_text = normalize_markdown_spacing(result['insight'])
                 if result.get('cached'):
                     st.markdown("💡 **AI Insight (from cache):**")
-                    # Display in a styled container
-                    st.markdown(f"""
-                    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; 
-                                border: 1px solid #dee2e6; line-height: 1.6; color: #212529;">
-                    {insight_text}
-                    </div>
-                    """, unsafe_allow_html=True)
+                    with st.container():
+                        st.markdown(insight_text)
                     st.caption("✅ Loaded from cache")
                 else:
                     st.markdown("💡 **AI Insight (freshly generated):**")
-                    # Display in a styled container
-                    st.markdown(f"""
-                    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; 
-                                border: 1px solid #dee2e6; line-height: 1.6; color: #212529;">
-                    {insight_text}
-                    </div>
-                    """, unsafe_allow_html=True)
+                    with st.container():
+                        st.markdown(insight_text)
                     st.caption("🆕 Freshly generated")
                 
                 if result.get('warning'):
@@ -201,12 +192,8 @@ def display_category_data(category_name, data, analyzer, ai_generator=None):
             insights = analyzer.get_category_insights(category_name, data)
             if insights:
                 st.markdown("💡 **Insight:**")
-                st.markdown(f"""
-                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; 
-                            border: 1px solid #dee2e6; line-height: 1.6; color: #212529;">
-                {insights}
-                </div>
-                """, unsafe_allow_html=True)
+                with st.container():
+                    st.markdown(normalize_markdown_spacing(insights))
                 st.caption("⚠️ AI insights not configured. Add your OpenAI API key to .env file for AI-powered insights.")
             else:
                 st.warning("⚠️ AI insights not configured. Add your OpenAI API key to .env file.")

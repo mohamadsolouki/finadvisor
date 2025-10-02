@@ -6,7 +6,9 @@ Displays Environmental, Social, and Governance metrics
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+
 from utils.data_fetcher import get_stock_info, get_esg_data
+from utils.text_utils import normalize_markdown_spacing
 
 
 def display_esg_analysis(ticker, cached_info=None):
@@ -320,16 +322,15 @@ Be specific, cite actual scores from the data, reference the visualizations and 
                             max_tokens=1500
                         )
                         
-                        ai_insight = response.choices[0].message.content.strip()
+                        from utils.text_utils import normalize_markdown_spacing
+
+                        ai_insight = normalize_markdown_spacing(response.choices[0].message.content.strip())
                         
-                        # Display AI insight in an attractive format
-                        st.markdown(f"""
-                        <div style="background-color: #e8f5e9; padding: 25px; border-radius: 10px; 
-                                    border-left: 5px solid #4caf50; line-height: 1.8; 
-                                    color: #212529; white-space: pre-wrap;">
-                        {ai_insight}
-                        </div>
-                        """, unsafe_allow_html=True)
+                        # Display AI insight using Streamlit's native components
+                        st.markdown("---")
+                        st.success("🌱 AI-Generated ESG Analysis")
+                        st.markdown(ai_insight)
+                        st.markdown("---")
                         
                         # Add disclaimer
                         st.caption("💡 AI-generated ESG analysis based on current sustainability data. This analysis references all ESG scores, charts, and peer comparisons shown above. ESG investing involves additional considerations beyond financial metrics.")

@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from utils.data_fetcher import get_historical_data
 from utils.visualizations import create_rolling_volatility_chart, create_drawdown_chart
+from utils.text_utils import normalize_markdown_spacing
 
 
 def display_risk_analysis(ticker, cached_info):
@@ -413,6 +414,12 @@ Provide a comprehensive, insightful risk analysis (600-800 words) that:
 
 10. **Forward-Looking Risk**: Based on the trends shown in the charts, is risk increasing or decreasing? What should investors monitor?
 
+**Formatting Requirements:**
+- Use Markdown `###` headings that map directly to each numbered section above.
+- Present key arguments within each section as bullet points or short paragraphs separated by blank lines to maintain readability.
+- Bold important metrics (percentages, dates, ratios) to highlight critical figures.
+- Include a closing "### Summary" section with 2-3 bullets that recap the most important risk insights and recommended next steps.
+
 Be specific, cite actual numbers from the metrics, reference all four panels of the dashboard, and provide actionable risk management guidance. Write in a professional yet accessible tone suitable for institutional portfolio managers and sophisticated retail investors."""
             
             try:
@@ -440,17 +447,14 @@ Be specific, cite actual numbers from the metrics, reference all four panels of 
                     temperature=0.7,
                     max_tokens=1800
                 )
-                
-                ai_insight = response.choices[0].message.content.strip()
-                
-                # Display AI insight in an attractive format
-                st.markdown(f"""
-                <div style="background-color: #fff3cd; padding: 25px; border-radius: 10px; 
-                            border-left: 5px solid #ffc107; line-height: 1.8; 
-                            color: #212529; white-space: pre-wrap;">
-                {ai_insight}
-                </div>
-                """, unsafe_allow_html=True)
+
+                ai_insight = normalize_markdown_spacing(response.choices[0].message.content.strip())
+
+                # Display AI insight using Streamlit's native components
+                st.markdown("---")
+                st.warning("⚠️ AI-Generated Risk Analysis")
+                st.markdown(ai_insight)
+                st.markdown("---")
                 
                 # Add disclaimer
                 st.caption("💡 AI-generated risk analysis based on historical data and statistical metrics. This analysis references all charts and risk metrics shown above. Past volatility and drawdowns do not guarantee future risk levels. Always conduct additional research and consult with financial advisors for portfolio decisions.")
