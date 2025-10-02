@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 from datetime import datetime
 import json
+import streamlit as st
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -17,7 +18,7 @@ from .text_utils import normalize_markdown_spacing
 
 INSIGHT_FORMAT_VERSION = 2
 
-# Load environment variables
+# Load environment variables for local development
 load_dotenv()
 
 
@@ -34,9 +35,9 @@ class AIInsightsGenerator:
         self.insights_dir = data_dir / "insights"
         self.insights_dir.mkdir(exist_ok=True)
         
-        # Initialize OpenAI client
-        api_key = os.getenv('OPENAI_API_KEY')
-        self.model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+        # Initialize OpenAI client - support both Streamlit secrets and env variables
+        api_key = self._get_api_key()
+        self.model = self._get_model()
         
         if not api_key or api_key == 'your-api-key-here':
             self.client = None
@@ -44,6 +45,30 @@ class AIInsightsGenerator:
         else:
             self.client = OpenAI(api_key=api_key)
             self.enabled = True
+    
+    def _get_api_key(self) -> Optional[str]:
+        """Get OpenAI API key from Streamlit secrets or environment variables"""
+        try:
+            # Try Streamlit secrets first (for cloud deployment)
+            if hasattr(st, 'secrets') and 'general' in st.secrets:
+                return st.secrets.general.get('OPENAI_API_KEY')
+        except Exception:
+            pass
+        
+        # Fallback to environment variable (for local development)
+        return os.getenv('OPENAI_API_KEY')
+    
+    def _get_model(self) -> str:
+        """Get OpenAI model from Streamlit secrets or environment variables"""
+        try:
+            # Try Streamlit secrets first (for cloud deployment)
+            if hasattr(st, 'secrets') and 'general' in st.secrets:
+                return st.secrets.general.get('OPENAI_MODEL', 'gpt-4o-mini')
+        except Exception:
+            pass
+        
+        # Fallback to environment variable (for local development)
+        return os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
     
     def _get_insights_file_path(self, category_name: str) -> Path:
         """Get the file path for storing insights for a category"""
