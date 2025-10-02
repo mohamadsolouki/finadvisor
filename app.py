@@ -136,7 +136,7 @@ def display_category_data(category_name, data, analyzer, ai_generator=None):
     st.markdown(f'<div class="section-header">{category_name}</div>', unsafe_allow_html=True)
     
     # Display the data table
-    st.dataframe(data, use_container_width=True, height=min(len(data) * 35 + 38, 400))
+    st.dataframe(data, width='stretch', height=min(len(data) * 35 + 38, 400))
     
     # Create visualizations based on category
     col1, col2 = st.columns(2)
@@ -146,14 +146,14 @@ def display_category_data(category_name, data, analyzer, ai_generator=None):
             # Single metric trend
             metric_row = data.iloc[0:1]
             fig = create_trend_chart(metric_row, f"{data.iloc[0]['Parameters']} Trend", data.iloc[0]['Parameters'])
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
     
     with col2:
         if len(data) > 1:
             # Multiple metrics comparison
             comparison_data = data.iloc[:min(5, len(data))]
             fig = create_comparison_chart(comparison_data, f"{category_name} - Top Metrics Comparison")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
     
     # AI-powered insights section
     st.markdown("### 🤖 Key Insights")
@@ -223,7 +223,7 @@ def main():
         st.session_state.last_fetch_time = None
     
     # Sidebar Navigation
-    st.sidebar.title("📊 Qualcomm Analysis")
+    st.sidebar.title("Navigation")
     
     # Navigation pages
     page = st.sidebar.radio(
@@ -250,7 +250,7 @@ def main():
         with st.sidebar.expander("🤖 AI Insights", expanded=False):
             if ai_generator.enabled:
                 st.success(f"✅ Enabled ({ai_generator.model})")
-                if st.button("🗑️ Clear AI Cache", use_container_width=True):
+                if st.button("🗑️ Clear AI Cache", use_container_width=False):
                     ai_generator.clear_cache()
                     st.success("Cache cleared!")
             else:
@@ -259,7 +259,7 @@ def main():
         
         # Data Management (compact)
         with st.sidebar.expander("⚙️ Data & Cache", expanded=False):
-            if st.button("� Clear All Cache", use_container_width=True):
+            if st.button("🧹 Clear All Cache", use_container_width=False):
                 st.cache_data.clear()
                 st.session_state.last_fetch_time = None
                 ai_generator.clear_cache()
@@ -281,7 +281,7 @@ def main():
         with st.sidebar.expander("📥 Export Reports", expanded=False):
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("📄 PDF", use_container_width=True):
+                if st.button("📄 PDF", use_container_width=False):
                     with st.spinner("Generating..."):
                         pdf_buffer = report_gen.generate_pdf_report()
                         st.download_button(
@@ -292,7 +292,7 @@ def main():
                             use_container_width=True
                         )
             with col2:
-                if st.button("📊 Excel", use_container_width=True):
+                if st.button("📊 Excel", use_container_width=False):
                     with st.spinner("Generating..."):
                         excel_buffer = report_gen.generate_excel_report()
                         st.download_button(
@@ -300,7 +300,7 @@ def main():
                             data=excel_buffer,
                             file_name=f"QCOM_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
+                            use_container_width=False
                         )
         
         # Fetch Yahoo Finance data once and cache it
@@ -435,7 +435,7 @@ def display_executive_summary(categorized_data, analyzer):
     if income_data is not None:
         revenue_profit_data = income_data[income_data['Parameters'].isin(['Total Revenue', 'Net Income', 'Operating Income'])]
         fig = create_comparison_chart(revenue_profit_data, "Revenue and Profit Trends")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     # Key Insights
     st.subheader("Key Financial Insights")
@@ -509,10 +509,10 @@ def display_custom_analysis(categorized_data):
         if custom_data_rows:
             custom_df = pd.concat(custom_data_rows, ignore_index=True)
             
-            st.dataframe(custom_df, use_container_width=True)
+            st.dataframe(custom_df, width='stretch')
             
             fig = create_comparison_chart(custom_df, "Custom Metrics Comparison")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
 
 if __name__ == "__main__":

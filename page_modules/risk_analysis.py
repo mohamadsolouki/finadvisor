@@ -148,7 +148,7 @@ def display_risk_analysis(ticker, cached_info):
     hist['Rolling_Vol'] = hist['Returns'].rolling(window=30).std() * np.sqrt(252) * 100
     
     fig = create_rolling_volatility_chart(hist)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     
     st.markdown("---")
     
@@ -177,7 +177,7 @@ def display_risk_analysis(ticker, cached_info):
     
     with col2:
         fig = create_drawdown_chart(hist)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     st.markdown("---")
     
@@ -309,7 +309,7 @@ def display_risk_analysis(ticker, cached_info):
         title_x=0.5
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     
     st.caption("📊 **Dashboard Guide**: Top-left shows price and cumulative returns; Top-right displays volatility trends; Bottom-left shows drawdown periods; Bottom-right illustrates return distribution with VaR threshold")
     

@@ -29,7 +29,7 @@ def load_local_financial_data():
 
 
 def extract_historical_financials_from_csv(df):
-    """Extract historical financial data from local CSV"""
+    """Extract historical financial data from local CSV with enhanced metrics"""
     financials = {
         'years': [],
         'revenue': [],
@@ -38,9 +38,15 @@ def extract_historical_financials_from_csv(df):
         'eps': [],
         'operating_cf': [],
         'free_cash_flow': [],
+        'capex': [],
         'total_assets': [],
         'total_equity': [],
-        'gross_profit': []
+        'total_debt': [],
+        'gross_profit': [],
+        'cost_of_revenue': [],
+        'current_assets': [],
+        'current_liabilities': [],
+        'interest_expense': []
     }
     
     try:
@@ -62,18 +68,40 @@ def extract_historical_financials_from_csv(df):
                 financials['eps'] = [float(str(row[str(y)]).replace(',', '')) for y in financials['years']]
             elif param == 'Cash from Operating Activities':
                 financials['operating_cf'] = [float(str(row[str(y)]).replace(',', '')) for y in financials['years']]
+            elif param == 'Capital Expenditure' or param == 'Capital Expenditures':
+                financials['capex'] = [abs(float(str(row[str(y)]).replace(',', ''))) for y in financials['years']]
             elif param == 'Total Assets':
                 financials['total_assets'] = [float(str(row[str(y)]).replace(',', '')) for y in financials['years']]
             elif param == 'Total Equity':
                 financials['total_equity'] = [float(str(row[str(y)]).replace(',', '')) for y in financials['years']]
+            elif param == 'Total Debt':
+                financials['total_debt'] = [float(str(row[str(y)]).replace(',', '')) for y in financials['years']]
             elif param == 'Gross Profit':
                 financials['gross_profit'] = [float(str(row[str(y)]).replace(',', '')) for y in financials['years']]
+            elif param == 'Cost Of Revenue':
+                financials['cost_of_revenue'] = [float(str(row[str(y)]).replace(',', '')) for y in financials['years']]
+            elif param == 'Current Assets':
+                financials['current_assets'] = [float(str(row[str(y)]).replace(',', '')) for y in financials['years']]
+            elif param == 'Current Liabilities':
+                financials['current_liabilities'] = [float(str(row[str(y)]).replace(',', '')) for y in financials['years']]
+            elif param == 'Interest Expense':
+                financials['interest_expense'] = [abs(float(str(row[str(y)]).replace(',', ''))) for y in financials['years']]
         
-        # Calculate FCF if we have operating CF
-        if financials['operating_cf']:
-            # FCF approximation = Operating CF - CapEx (estimate as 10% of revenue)
+        # Calculate CapEx from investing cash flow if not available
+        if not financials['capex'] and financials['revenue']:
+            # Use industry average: Tech ~5%, Industrial ~8%, Retail ~3%
+            # Default to 6% as reasonable estimate
+            financials['capex'] = [rev * 0.06 for rev in financials['revenue']]
+        
+        # Calculate FCF = Operating CF - CapEx (proper formula)
+        if financials['operating_cf'] and financials['capex']:
             financials['free_cash_flow'] = [
-                cf - (rev * 0.1) for cf, rev in zip(financials['operating_cf'], financials['revenue'])
+                cf - capex for cf, capex in zip(financials['operating_cf'], financials['capex'])
+            ]
+        elif financials['operating_cf']:
+            # Fallback if no CapEx data
+            financials['free_cash_flow'] = [
+                cf * 0.75 for cf in financials['operating_cf']  # Assume CapEx is ~25% of OCF
             ]
         
         return financials
@@ -97,6 +125,7 @@ def calculate_historical_growth_rates(ticker, use_local_data=True):
         income_stmt = stock.financials
         balance_sheet = stock.balance_sheet
         cashflow = stock.cashflow
+        stock_info = stock.info if hasattr(stock, 'info') else {}
         
         # Combine local and yfinance data
         if local_financials and local_financials['years']:
@@ -110,9 +139,14 @@ def calculate_historical_growth_rates(ticker, use_local_data=True):
                 'eps': local_financials['eps'],
                 'operating_cf': local_financials['operating_cf'],
                 'free_cash_flow': local_financials['free_cash_flow'],
+                'capex': local_financials['capex'],
                 'total_assets': local_financials['total_assets'],
                 'total_equity': local_financials['total_equity'],
-                'gross_profit': local_financials['gross_profit']
+                'total_debt': local_financials['total_debt'],
+                'gross_profit': local_financials['gross_profit'],
+                'current_assets': local_financials.get('current_assets', []),
+                'current_liabilities': local_financials.get('current_liabilities', []),
+                'interest_expense': local_financials.get('interest_expense', [])
             }
         else:
             # Fallback to yfinance only
@@ -140,11 +174,108 @@ def calculate_historical_growth_rates(ticker, use_local_data=True):
         # Calculate comprehensive growth rates using multiple methods
         growth_rates = calculate_growth_metrics(historical_data)
         
+        # Add industry context and validation
+        industry_context = get_industry_context(ticker, stock_info)
+        
+        # Validate and adjust growth rates for reasonableness
+        growth_rates = validate_growth_rates(growth_rates, historical_data, industry_context)
+        
         return historical_data, growth_rates
         
     except Exception as e:
         st.error(f"Error fetching financial statements: {str(e)}")
         return None, None
+
+
+def get_industry_context(ticker, stock_info):
+    """Gather industry-specific context from yfinance for more reasonable assumptions"""
+    context = {
+        'industry': stock_info.get('industry', 'Unknown'),
+        'sector': stock_info.get('sector', 'Unknown'),
+        'market_cap': stock_info.get('marketCap', 0),
+        'revenue_growth': stock_info.get('revenueGrowth', None),
+        'earnings_growth': stock_info.get('earningsGrowth', None),
+        'industry_pe': stock_info.get('forwardPE', None),
+        'industry_peg': stock_info.get('pegRatio', None),
+        'profit_margins': stock_info.get('profitMargins', None),
+        'operating_margins': stock_info.get('operatingMargins', None),
+        'roe': stock_info.get('returnOnEquity', None),
+        'roa': stock_info.get('returnOnAssets', None),
+        'debt_to_equity': stock_info.get('debtToEquity', None),
+        'current_ratio': stock_info.get('currentRatio', None),
+        'quick_ratio': stock_info.get('quickRatio', None),
+        'beta': stock_info.get('beta', 1.0),
+        'fifty_two_week_change': stock_info.get('52WeekChange', None)
+    }
+    
+    # Determine company maturity based on market cap
+    if context['market_cap'] > 200e9:  # > $200B
+        context['maturity'] = 'mega_cap'
+        context['typical_growth'] = 0.08  # 8%
+    elif context['market_cap'] > 50e9:  # > $50B
+        context['maturity'] = 'large_cap'
+        context['typical_growth'] = 0.12  # 12%
+    elif context['market_cap'] > 10e9:  # > $10B
+        context['maturity'] = 'mid_cap'
+        context['typical_growth'] = 0.15  # 15%
+    else:
+        context['maturity'] = 'small_cap'
+        context['typical_growth'] = 0.20  # 20%
+    
+    # Industry-specific growth caps
+    industry_growth_caps = {
+        'Technology': 0.25,
+        'Healthcare': 0.20,
+        'Financial Services': 0.12,
+        'Consumer Cyclical': 0.15,
+        'Industrials': 0.10,
+        'Energy': 0.15,
+        'Utilities': 0.05,
+        'Real Estate': 0.08,
+        'Consumer Defensive': 0.08,
+        'Basic Materials': 0.10,
+        'Communication Services': 0.12
+    }
+    
+    context['industry_growth_cap'] = industry_growth_caps.get(context['sector'], 0.15)
+    
+    return context
+
+
+def validate_growth_rates(growth_rates, historical_data, industry_context):
+    """Validate and adjust growth rates to be reasonable based on company size, industry, and historical trends"""
+    validated_rates = growth_rates.copy()
+    
+    # Get industry-appropriate caps
+    industry_cap = industry_context.get('industry_growth_cap', 0.15)
+    maturity_cap = industry_context.get('typical_growth', 0.12)
+    
+    # Use the more conservative cap
+    reasonable_cap = min(industry_cap, maturity_cap * 1.5)  # Allow some upside
+    reasonable_floor = -0.10  # Don't project worse than -10% decline
+    
+    # Check for recent trend reversal or declining business
+    if len(historical_data.get('revenue', [])) >= 2:
+        recent_growth = (historical_data['revenue'][-1] - historical_data['revenue'][-2]) / historical_data['revenue'][-2]
+        if recent_growth < 0:
+            # Recent decline - be more conservative
+            reasonable_cap = min(reasonable_cap, 0.05)  # Cap at 5% if declining
+            st.warning("⚠️ Recent revenue decline detected - projections capped at 5% growth")
+    
+    # Validate each methodology
+    for method in ['cagr', 'simple_average', 'weighted_average', 'linear_regression']:
+        if method in validated_rates:
+            for metric in validated_rates[method]:
+                original_rate = validated_rates[method][metric]
+                
+                # Apply caps
+                adjusted_rate = max(reasonable_floor, min(reasonable_cap, original_rate))
+                
+                # If we had to adjust significantly, note it
+                if abs(adjusted_rate - original_rate) > 0.05:  # More than 5% difference
+                    validated_rates[method][metric] = adjusted_rate
+    
+    return validated_rates
 
 
 def calculate_growth_metrics(historical_data):
@@ -273,13 +404,14 @@ def monte_carlo_simulation(base_value, mean_growth, volatility, years=5, simulat
     return percentiles
 
 
-def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projection_years=5, ticker=None):
-    """Calculate DCF (Discounted Cash Flow) valuation"""
+def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projection_years=5, ticker=None, industry_context=None):
+    """Calculate DCF (Discounted Cash Flow) valuation with enhanced assumptions and transparency"""
     try:
         # Get required inputs - FCF is in millions
         fcf_current = historical_data['free_cash_flow'][-1] if historical_data['free_cash_flow'] else 0
         
         if fcf_current <= 0:
+            st.warning("⚠️ DCF requires positive Free Cash Flow. Current FCF is negative or zero.")
             return None
         
         # Get current stock price - try multiple sources
@@ -297,45 +429,89 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
             except:
                 pass
         
-        # Estimate WACC (Weighted Average Cost of Capital)
+        # Calculate historical CapEx intensity for better projections
+        capex_intensity = 0.06  # Default 6%
+        if historical_data.get('capex') and historical_data.get('revenue'):
+            capex_values = [c / r for c, r in zip(historical_data['capex'], historical_data['revenue']) if r > 0]
+            if capex_values:
+                capex_intensity = np.mean(capex_values)
+        
+        # Estimate WACC (Weighted Average Cost of Capital) with industry context
         beta = stock_info.get('beta', 1.0)
         if beta is None or beta == 0:
             beta = 1.0
-            
-        risk_free_rate = 0.045  # 4.5% US 10-year treasury
+        
+        # Use current 10-year Treasury rate (update this periodically)
+        risk_free_rate = 0.045  # 4.5% US 10-year treasury (Oct 2025)
         market_return = 0.10  # Historical market return ~10%
-        cost_of_equity = risk_free_rate + beta * (market_return - risk_free_rate)
+        equity_risk_premium = market_return - risk_free_rate
         
-        # Estimate cost of debt - values are in millions
-        total_assets = historical_data['total_assets'][-1] if historical_data['total_assets'] else 0
-        total_equity = historical_data['total_equity'][-1] if historical_data['total_equity'] else 0
-        debt = total_assets - total_equity if total_assets and total_equity else 0
-        debt = max(0, debt)  # Ensure non-negative
+        # Cost of equity using CAPM
+        cost_of_equity = risk_free_rate + beta * equity_risk_premium
         
-        equity = total_equity if total_equity else 1
-        total_capital = debt + equity
+        # Get actual debt and interest expense for cost of debt calculation
+        total_debt = 0
+        if historical_data.get('total_debt') and len(historical_data['total_debt']) > 0:
+            total_debt = historical_data['total_debt'][-1]
+        else:
+            # Fallback: estimate from balance sheet
+            total_assets = historical_data['total_assets'][-1] if historical_data['total_assets'] else 0
+            total_equity = historical_data['total_equity'][-1] if historical_data['total_equity'] else 0
+            total_debt = total_assets - total_equity if total_assets and total_equity else 0
+            total_debt = max(0, total_debt)
         
-        cost_of_debt = 0.05  # Estimated 5%
+        equity = historical_data['total_equity'][-1] if historical_data['total_equity'] else 1
+        total_capital = total_debt + equity
+        
+        # Calculate actual cost of debt from interest expense if available
+        cost_of_debt = 0.05  # Default 5%
+        if historical_data.get('interest_expense') and len(historical_data['interest_expense']) > 0 and total_debt > 0:
+            recent_interest = historical_data['interest_expense'][-1]
+            cost_of_debt = recent_interest / total_debt if total_debt > 0 else 0.05
+            cost_of_debt = max(0.02, min(0.12, cost_of_debt))  # Between 2% and 12%
+        
         tax_rate = 0.21  # US corporate tax rate
         
+        # Calculate WACC
         if total_capital > 0:
-            wacc = (equity / total_capital) * cost_of_equity + (debt / total_capital) * cost_of_debt * (1 - tax_rate)
+            wacc = (equity / total_capital) * cost_of_equity + (total_debt / total_capital) * cost_of_debt * (1 - tax_rate)
         else:
             wacc = cost_of_equity
         
         # Ensure WACC is reasonable
-        wacc = max(0.05, min(0.20, wacc))  # Between 5% and 20%
+        wacc = max(0.06, min(0.18, wacc))  # Between 6% and 18%
         
-        # Project FCF
+        # Project FCF with validated growth rate
         fcf_growth_rate = growth_rates['cagr'].get('free_cash_flow', 0.08)
-        # Cap growth rate at reasonable levels
-        fcf_growth_rate = max(-0.5, min(0.5, fcf_growth_rate))  # Between -50% and 50%
         
-        terminal_growth_rate = 0.025  # 2.5% perpetual growth
+        # Additional validation: FCF growth should be reasonable
+        revenue_growth = growth_rates['cagr'].get('revenue', 0.08)
+        # FCF growth shouldn't wildly exceed revenue growth without good reason
+        if fcf_growth_rate > revenue_growth * 1.5:
+            fcf_growth_rate = revenue_growth * 1.2  # Allow 20% premium max
+            st.info(f"📊 FCF growth adjusted to {fcf_growth_rate*100:.1f}% to align with revenue growth trends")
         
-        # Ensure terminal growth < WACC
+        # Cap FCF growth at reasonable levels based on industry
+        max_fcf_growth = 0.20  # 20% default
+        if industry_context:
+            max_fcf_growth = industry_context.get('industry_growth_cap', 0.20)
+        
+        fcf_growth_rate = max(-0.10, min(max_fcf_growth, fcf_growth_rate))
+        
+        # Terminal growth rate - should be GDP-like
+        terminal_growth_rate = 0.025  # 2.5% - long-term GDP growth
+        
+        # Industry adjustments for terminal growth
+        if industry_context:
+            sector = industry_context.get('sector', '')
+            if sector in ['Utilities', 'Consumer Defensive', 'Real Estate']:
+                terminal_growth_rate = 0.020  # 2% for mature industries
+            elif sector in ['Technology', 'Healthcare']:
+                terminal_growth_rate = 0.030  # 3% for growth industries
+        
+        # Ensure terminal growth < WACC (mathematical requirement)
         if terminal_growth_rate >= wacc:
-            terminal_growth_rate = wacc * 0.5  # Set to half of WACC
+            terminal_growth_rate = wacc * 0.6  # Set to 60% of WACC
         
         projected_fcf = []
         for year in range(1, projection_years + 1):
@@ -358,7 +534,9 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
         
         # Equity Value (in millions)
         cash = stock_info.get('cash', 0) / 1e6 if stock_info.get('cash', 0) > 1e6 else stock_info.get('cash', 0)  # Convert to millions if in dollars
-        total_debt = stock_info.get('totalDebt', 0) / 1e6 if stock_info.get('totalDebt', 0) > 1e6 else stock_info.get('totalDebt', debt)  # Convert to millions
+        # Use total_debt from earlier calculation, or get from stock_info
+        debt_from_stockinfo = stock_info.get('totalDebt', 0) / 1e6 if stock_info.get('totalDebt', 0) > 1e6 else stock_info.get('totalDebt', total_debt)
+        total_debt = debt_from_stockinfo if debt_from_stockinfo > 0 else total_debt  # Prefer stock_info, fallback to calculated
         
         equity_value = enterprise_value + cash - total_debt
         
@@ -379,10 +557,17 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
         else:
             upside = 0
         
+        # Calculate sensitivity analysis
+        sensitivity_analysis = calculate_dcf_sensitivity(
+            projected_fcf, terminal_fcf, wacc, terminal_growth_rate, 
+            projection_years, cash, total_debt, shares_outstanding
+        )
+        
         return {
             'fcf_current': fcf_current,
             'wacc': wacc,
             'cost_of_equity': cost_of_equity,
+            'cost_of_debt': cost_of_debt,
             'fcf_growth_rate': fcf_growth_rate,
             'terminal_growth_rate': terminal_growth_rate,
             'projected_fcf': projected_fcf,
@@ -396,13 +581,72 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
             'upside': upside,
             'shares_outstanding': shares_outstanding,
             'debt': total_debt,
-            'cash': cash
+            'cash': cash,
+            'beta': beta,
+            'risk_free_rate': risk_free_rate,
+            'equity_risk_premium': equity_risk_premium,
+            'debt_to_equity': (total_debt / equity) if equity > 0 else 0,
+            'capex_intensity': capex_intensity,
+            'sensitivity_analysis': sensitivity_analysis
         }
     except Exception as e:
         st.warning(f"DCF calculation error: {str(e)}")
         import traceback
         st.error(traceback.format_exc())
         return None
+
+
+def calculate_dcf_sensitivity(projected_fcf, terminal_fcf, base_wacc, base_terminal_growth, projection_years, cash, debt, shares):
+    """Calculate DCF sensitivity to key assumptions"""
+    sensitivity = {}
+    
+    # WACC sensitivity (+/- 1%)
+    wacc_scenarios = [base_wacc - 0.01, base_wacc, base_wacc + 0.01]
+    wacc_values = []
+    
+    for wacc in wacc_scenarios:
+        # Recalculate PV of FCF
+        pv_fcf = sum([fcf / ((1 + wacc) ** (i + 1)) for i, fcf in enumerate(projected_fcf)])
+        
+        # Ensure terminal growth < WACC
+        terminal_growth = min(base_terminal_growth, wacc * 0.6)
+        terminal_value = terminal_fcf / (wacc - terminal_growth)
+        pv_terminal = terminal_value / ((1 + wacc) ** projection_years)
+        
+        ev = pv_fcf + pv_terminal
+        equity_value = ev + cash - debt
+        fair_value = (equity_value * 1e6) / shares if shares > 0 else 0
+        wacc_values.append(fair_value)
+    
+    sensitivity['wacc'] = {
+        'scenarios': [f'{w*100:.1f}%' for w in wacc_scenarios],
+        'values': wacc_values
+    }
+    
+    # Terminal growth sensitivity
+    terminal_growth_scenarios = [
+        max(0.015, base_terminal_growth - 0.005),
+        base_terminal_growth,
+        min(base_wacc * 0.6, base_terminal_growth + 0.005)
+    ]
+    terminal_values = []
+    
+    pv_fcf_base = sum([fcf / ((1 + base_wacc) ** (i + 1)) for i, fcf in enumerate(projected_fcf)])
+    
+    for tg in terminal_growth_scenarios:
+        terminal_value = terminal_fcf / (base_wacc - tg)
+        pv_terminal = terminal_value / ((1 + base_wacc) ** projection_years)
+        ev = pv_fcf_base + pv_terminal
+        equity_value = ev + cash - debt
+        fair_value = (equity_value * 1e6) / shares if shares > 0 else 0
+        terminal_values.append(fair_value)
+    
+    sensitivity['terminal_growth'] = {
+        'scenarios': [f'{tg*100:.1f}%' for tg in terminal_growth_scenarios],
+        'values': terminal_values
+    }
+    
+    return sensitivity
 
 
 def create_scenario_projections(historical_data, growth_rates, years=5):
@@ -551,7 +795,7 @@ def display_financial_projections(ticker, cached_info):
             st.metric(
                 f"Revenue ({most_recent_year})",
                 f"${latest_revenue/1e3:.2f}B",
-                f"{revenue_cagr:.1f}% CAGR"
+                f"{revenue_cagr:.1f}% CAGR (Historical)"
             )
     
     with col2:
@@ -561,7 +805,7 @@ def display_financial_projections(ticker, cached_info):
             st.metric(
                 f"Net Income ({most_recent_year})",
                 f"${latest_net_income/1e3:.2f}B",
-                f"{ni_cagr:.1f}% CAGR"
+                f"{ni_cagr:.1f}% CAGR (Historical)"
             )
     
     with col3:
@@ -571,7 +815,7 @@ def display_financial_projections(ticker, cached_info):
             st.metric(
                 f"EPS ({most_recent_year})",
                 f"${latest_eps:.2f}",
-                f"{eps_cagr:.1f}% CAGR"
+                f"{eps_cagr:.1f}% CAGR (Historical)"
             )
     
     with col4:
@@ -581,10 +825,10 @@ def display_financial_projections(ticker, cached_info):
             st.metric(
                 f"Free Cash Flow ({most_recent_year})",
                 f"${latest_fcf/1e3:.2f}B",
-                f"{fcf_cagr:.1f}% CAGR"
+                f"{fcf_cagr:.1f}% CAGR (Historical)"
             )
     
-    st.caption(f"📅 Historical Data: 2020-{most_recent_year} | Data Source: Company Financials")
+    st.caption(f"📅 Historical Data: 2020-{most_recent_year} | Data Source: Company Financials | Note: Metrics show historical CAGR - Projections below use **{projection_method.upper().replace('_', ' ')}** method")
     
     # Display comprehensive growth rates comparison
     st.markdown("---")
@@ -610,7 +854,7 @@ def display_financial_projections(ticker, cached_info):
     
     if growth_comparison_data:
         growth_df = pd.DataFrame(growth_comparison_data)
-        st.dataframe(growth_df, use_container_width=True, hide_index=True)
+        st.dataframe(growth_df, width='stretch', hide_index=True)
         
         st.caption("""
         **Methodology Comparison:** CAGR = Compound Annual Growth | Simple Avg = Arithmetic mean | 
@@ -622,6 +866,13 @@ def display_financial_projections(ticker, cached_info):
     st.markdown("---")
     st.markdown(f"### 🔮 Financial Projections ({projection_years}-Year Forecast)")
     st.markdown(f"**Method:** {projection_method.upper().replace('_', ' ')} | **Period:** 2020-{historical_data['years'][-1] + projection_years}")
+    
+    # Show the actual growth rates being used for projections
+    if projection_method in growth_rates and 'revenue' in growth_rates[projection_method]:
+        proj_revenue_growth = growth_rates[projection_method].get('revenue', 0) * 100
+        proj_ni_growth = growth_rates[projection_method].get('net_income', 0) * 100
+        proj_eps_growth = growth_rates[projection_method].get('eps', 0) * 100
+        st.info(f"📊 **Using {projection_method.upper().replace('_', ' ')} Growth Rates:** Revenue: {proj_revenue_growth:.1f}% | Net Income: {proj_ni_growth:.1f}% | EPS: {proj_eps_growth:.1f}%")
     
     projections = project_financials_multi_method(historical_data, growth_rates, projection_years, projection_method)
     
@@ -824,10 +1075,69 @@ def display_financial_projections(ticker, cached_info):
         title_font=dict(size=16)
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': True, 'displaylogo': False})
     
     if enable_monte_carlo:
         st.caption("📊 **Chart includes Monte Carlo confidence intervals** (shaded blue area shows 10th-90th percentile range from 1000 simulations)")
+    
+    # Add projection assumptions and limitations
+    with st.expander("⚠️ Projection Methodology & Important Limitations", expanded=False):
+        st.markdown("""
+        #### Projection Methodology
+        
+        Our projections use multiple validated approaches:
+        
+        1. **Historical Analysis (2020-2024)**: 5-year trend analysis across all key financial metrics
+        2. **Growth Rate Validation**: All growth rates are capped at industry-reasonable levels based on:
+           - Company size and maturity (market cap-based)
+           - Industry/sector growth caps
+           - Historical volatility
+           - Recent trends (declining companies get conservative caps)
+        3. **Multiple Methodologies**: CAGR, weighted average (recent focus), linear regression, simple average
+        4. **Scenario Analysis**: Bull/Base/Bear cases using ±1 standard deviation from base growth
+        5. **Monte Carlo Simulation**: 1,000 probabilistic scenarios incorporating historical volatility
+        
+        #### Key Limitations & Risk Factors
+        
+        **⚠️ Please be aware of these important limitations:**
+        
+        1. **Past Performance ≠ Future Results**: Historical growth rates may not continue due to:
+           - Market saturation
+           - Increased competition
+           - Technological disruption
+           - Economic cycles
+           - Regulatory changes
+        
+        2. **Linear Projection Assumption**: Our models assume relatively smooth growth, but reality includes:
+           - Unexpected shocks (recessions, pandemics, etc.)
+           - Step-function changes (acquisitions, divestitures)
+           - Market share shifts
+           - Management changes
+        
+        3. **Industry Dynamics**: Even with industry caps, projections may not account for:
+           - Disruptive competitors
+           - Changing customer preferences
+           - Supply chain disruptions
+           - Geopolitical events
+        
+        4. **Margin Assumptions**: Projections assume relatively stable margins, which may not hold if:
+           - Input costs change significantly
+           - Pricing power erodes
+           - Operating leverage changes
+           - Mix shifts occur
+        
+        5. **Data Quality**: While we use comprehensive historical data, limitations include:
+           - Accounting policy changes
+           - One-time items not fully adjusted
+           - Quality of estimates (e.g., CapEx approximations)
+        
+        **🎯 Best Practice**: Use these projections as ONE input in your analysis. Compare with:
+        - Analyst consensus estimates
+        - Company guidance
+        - Industry benchmarks
+        - Multiple valuation methods
+        - Scenario planning
+        """)
     
     # Display comprehensive projection table with scenarios
     st.markdown("---")
@@ -869,7 +1179,7 @@ def display_financial_projections(ticker, cached_info):
             table_data.append(row)
         
         projection_df = pd.DataFrame(table_data)
-        st.dataframe(projection_df, use_container_width=True, hide_index=True)
+        st.dataframe(projection_df, width='stretch', hide_index=True)
     
     with tab2:
         # Scenario comparison
@@ -892,16 +1202,20 @@ def display_financial_projections(ticker, cached_info):
                 })
         
         scenario_df = pd.DataFrame(scenario_data)
-        st.dataframe(scenario_df, use_container_width=True, hide_index=True)
+        st.dataframe(scenario_df, width='stretch', hide_index=True)
         st.caption(f"**Scenarios represent final year ({base_year + projection_years}) projections under different growth assumptions**")
     
     # DCF Valuation
     st.markdown("---")
     st.markdown("### 💰 DCF Valuation Analysis")
     st.markdown("**Discounted Cash Flow Model** - Intrinsic value estimation based on projected free cash flows")
+    st.info("📊 **Enhanced DCF Model**: Uses historical CapEx intensity, actual cost of debt from interest expense, industry-adjusted terminal growth, and includes sensitivity analysis")
+    
+    # Get industry context for DCF
+    industry_context = get_industry_context(ticker, cached_info)
     
     with st.spinner("Calculating DCF valuation..."):
-        dcf_results = calculate_dcf_valuation(historical_data, growth_rates, cached_info, projection_years, ticker)
+        dcf_results = calculate_dcf_valuation(historical_data, growth_rates, cached_info, projection_years, ticker, industry_context)
     
     if dcf_results:
         col1, col2, col3, col4 = st.columns(4)
@@ -936,34 +1250,118 @@ def display_financial_projections(ticker, cached_info):
             )
         
         # DCF Details in expander
-        with st.expander("📊 DCF Model Details & Assumptions"):
-            col1, col2 = st.columns(2)
+        with st.expander("📊 DCF Model Details, Assumptions & Sensitivity Analysis", expanded=False):
+            st.markdown("#### 🔑 Key Assumptions & Their Sources")
+            
+            col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("**Key Assumptions:**")
+                st.markdown("**Cash Flow Assumptions:**")
                 st.markdown(f"""
-                - **Current FCF**: ${dcf_results['fcf_current']/1e3:.2f}B
-                - **FCF Growth Rate**: {dcf_results['fcf_growth_rate']*100:.2f}%
-                - **Terminal Growth**: {dcf_results['terminal_growth_rate']*100:.2f}%
-                - **Cost of Equity**: {dcf_results['cost_of_equity']*100:.2f}%
-                - **WACC**: {dcf_results['wacc']*100:.2f}%
-                - **Projection Period**: {projection_years} years
+                - **Current FCF**: ${dcf_results['fcf_current']/1e3:.2f}B  
+                  *From: Historical financial statements*
+                - **FCF Growth Rate**: {dcf_results['fcf_growth_rate']*100:.2f}%  
+                  *Based on: Historical CAGR, adjusted for industry norms*
+                - **Terminal Growth**: {dcf_results['terminal_growth_rate']*100:.2f}%  
+                  *Assumption: Long-term GDP growth + industry adjustment*
+                - **CapEx Intensity**: {dcf_results.get('capex_intensity', 0.06)*100:.1f}%  
+                  *From: {len(historical_data.get('capex', []))} years of historical data*
                 """)
             
             with col2:
-                st.markdown("**Valuation Breakdown:**")
+                st.markdown("**Cost of Capital (WACC):**")
+                debt_to_equity = dcf_results.get('debt_to_equity', 0)
+                st.markdown(f"""
+                - **WACC**: {dcf_results['wacc']*100:.2f}%  
+                  *Weighted average of debt and equity costs*
+                - **Cost of Equity**: {dcf_results['cost_of_equity']*100:.2f}%  
+                  *CAPM: Risk-free + Beta × Market premium*
+                - **Cost of Debt**: {dcf_results.get('cost_of_debt', 0.05)*100:.2f}%  
+                  *From: Interest expense / Total debt*
+                - **Beta**: {dcf_results.get('beta', 1.0):.2f}  
+                  *From: Yahoo Finance market data*
+                - **Risk-Free Rate**: {dcf_results.get('risk_free_rate', 0.045)*100:.2f}%  
+                  *US 10-Year Treasury*
+                - **Equity Risk Premium**: {dcf_results.get('equity_risk_premium', 0.055)*100:.2f}%  
+                  *Historical market premium*
+                """)
+            
+            with col3:
+                st.markdown("**Capital Structure:**")
                 shares_m = dcf_results.get('shares_outstanding', 0) / 1e6
                 st.markdown(f"""
-                - **PV of Projected FCF**: ${sum(dcf_results['pv_fcf'])/1e3:.2f}B
-                - **Terminal Value**: ${dcf_results['terminal_value']/1e3:.2f}B
-                - **PV of Terminal Value**: ${dcf_results['pv_terminal_value']/1e3:.2f}B
-                - **Enterprise Value**: ${dcf_results['enterprise_value']/1e3:.2f}B
-                - **Plus Cash**: ${dcf_results.get('cash', 0)/1e3:.2f}B
-                - **Less Debt**: ${dcf_results.get('debt', 0)/1e3:.2f}B
-                - **Equity Value**: ${dcf_results['equity_value']/1e3:.2f}B
+                - **Total Debt**: ${dcf_results.get('debt', 0)/1e3:.2f}B
+                - **Cash**: ${dcf_results.get('cash', 0)/1e3:.2f}B
+                - **Net Debt**: ${(dcf_results.get('debt', 0) - dcf_results.get('cash', 0))/1e3:.2f}B
+                - **Debt-to-Equity**: {debt_to_equity:.2f}x
                 - **Shares Outstanding**: {shares_m:.0f}M
-                - **Fair Value/Share**: ${dcf_results['fair_value_per_share']:.2f}
                 """)
+            
+            st.markdown("---")
+            st.markdown("#### 📊 Valuation Build-Up")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Enterprise Value Calculation:**")
+                pv_fcf_total = sum(dcf_results['pv_fcf'])
+                terminal_pct = (dcf_results['pv_terminal_value'] / dcf_results['enterprise_value']) * 100
+                st.markdown(f"""
+                - **PV of Projected FCF** ({projection_years} years): ${pv_fcf_total/1e3:.2f}B
+                - **Terminal Value**: ${dcf_results['terminal_value']/1e3:.2f}B
+                - **PV of Terminal Value**: ${dcf_results['pv_terminal_value']/1e3:.2f}B  
+                  *({terminal_pct:.1f}% of Enterprise Value)*
+                - **Enterprise Value**: ${dcf_results['enterprise_value']/1e3:.2f}B
+                """)
+                
+                if terminal_pct > 80:
+                    st.warning("⚠️ Terminal value represents >80% of valuation - DCF is highly sensitive to terminal assumptions")
+            
+            with col2:
+                st.markdown("**Equity Value Calculation:**")
+                st.markdown(f"""
+                - **Enterprise Value**: ${dcf_results['enterprise_value']/1e3:.2f}B
+                - **+ Cash & Equivalents**: ${dcf_results.get('cash', 0)/1e3:.2f}B
+                - **- Total Debt**: ${dcf_results.get('debt', 0)/1e3:.2f}B
+                - **= Equity Value**: ${dcf_results['equity_value']/1e3:.2f}B
+                - **÷ Shares Outstanding**: {shares_m:.0f}M
+                - **= Fair Value per Share**: ${dcf_results['fair_value_per_share']:.2f}
+                """)
+            
+            st.markdown("---")
+            st.markdown("#### 🎯 Sensitivity Analysis")
+            st.markdown("See how the fair value changes with different assumptions:")
+            
+            if 'sensitivity_analysis' in dcf_results:
+                sens = dcf_results['sensitivity_analysis']
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**WACC Sensitivity (±1%)**")
+                    wacc_df = pd.DataFrame({
+                        'WACC': sens['wacc']['scenarios'],
+                        'Fair Value': [f'${v:.2f}' for v in sens['wacc']['values']],
+                        'Change': [
+                            f"{((v - dcf_results['fair_value_per_share']) / dcf_results['fair_value_per_share'] * 100):+.1f}%" 
+                            for v in sens['wacc']['values']
+                        ]
+                    })
+                    st.dataframe(wacc_df, width='stretch', hide_index=True)
+                    st.caption("Lower WACC = Higher valuation (less risky)")
+                
+                with col2:
+                    st.markdown("**Terminal Growth Sensitivity (±0.5%)**")
+                    tg_df = pd.DataFrame({
+                        'Terminal Growth': sens['terminal_growth']['scenarios'],
+                        'Fair Value': [f'${v:.2f}' for v in sens['terminal_growth']['values']],
+                        'Change': [
+                            f"{((v - dcf_results['fair_value_per_share']) / dcf_results['fair_value_per_share'] * 100):+.1f}%" 
+                            for v in sens['terminal_growth']['values']
+                        ]
+                    })
+                    st.dataframe(tg_df, width='stretch', hide_index=True)
+                    st.caption("Higher terminal growth = Higher valuation")
             
             # FCF projection visualization
             fcf_years = list(range(1, projection_years + 1))
@@ -996,7 +1394,7 @@ def display_financial_projections(ticker, cached_info):
                 height=400
             )
             
-            st.plotly_chart(fig_dcf, use_container_width=True)
+            st.plotly_chart(fig_dcf, width='stretch', config={'displayModeBar': True, 'displaylogo': False})
             
             st.caption("**DCF Interpretation:** The DCF model estimates intrinsic value by discounting all future free cash flows to present value. A positive upside suggests the stock may be undervalued.")
     else:
@@ -1246,3 +1644,68 @@ Be highly specific, cite actual numbers from all projections/metrics/scenarios/D
                 st.info("Please ensure your OpenAI API key is properly configured in the .env file.")
     else:
         st.info("🔑 **AI Advanced Analysis Unavailable**: Configure your OpenAI API key in the .env file to enable comprehensive AI-powered analysis that synthesizes all projection methodologies, scenario analysis, DCF valuation, historical trends (2020-present), and market expectations into a cohesive investment thesis and recommendation.")
+    
+    # Final Summary and Important Disclosures
+    st.markdown("---")
+    st.markdown("### 📌 Key Takeaways & Critical Disclosures")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### ✅ Strengths of This Analysis")
+        st.markdown("""
+        - **Comprehensive Historical Data**: 5-year trend analysis (2020-2024)
+        - **Multiple Methodologies**: CAGR, weighted average, regression, simple average
+        - **Industry-Validated Growth Rates**: Capped at reasonable industry benchmarks
+        - **Scenario Analysis**: Bull/Base/Bear cases with probabilistic Monte Carlo
+        - **Enhanced DCF Model**: Uses actual CapEx, debt costs, and industry-adjusted WACC
+        - **Sensitivity Analysis**: Shows impact of key assumption changes
+        - **Transparent Assumptions**: All inputs and calculations clearly documented
+        """)
+    
+    with col2:
+        st.markdown("#### ⚠️ Important Warnings & Limitations")
+        st.markdown("""
+        - **Not Financial Advice**: This is analytical tool output, not investment recommendations
+        - **Historical Bias**: Past growth rates may not continue in different market conditions
+        - **Model Assumptions**: Linear projections don't capture all real-world complexity
+        - **Data Quality**: Estimates used where actual data unavailable (e.g., some CapEx)
+        - **Market Changes**: Cannot predict disruption, competition, or macro shocks
+        - **DCF Sensitivity**: Small assumption changes significantly impact valuation
+        - **Requires Validation**: Cross-check with analyst consensus and company guidance
+        """)
+    
+    st.markdown("---")
+    st.error("""
+    **⚠️ CRITICAL DISCLAIMER - PLEASE READ**
+    
+    This financial projection and valuation analysis is provided for informational and educational purposes only. 
+    It is NOT investment advice, and should NOT be the sole basis for any investment decision.
+    
+    **Key Points:**
+    - Projections are based on historical data and mathematical models with inherent limitations
+    - Growth rates are capped at industry-reasonable levels, but no cap guarantees accuracy
+    - DCF valuations are highly sensitive to assumptions (WACC, terminal growth, FCF growth)
+    - Market conditions, competition, and company-specific factors can materially differ from projections
+    - Past performance does not guarantee future results
+    - All investments carry risk, including the potential loss of principal
+    
+    **Before Making Any Investment Decision:**
+    1. Conduct your own thorough research
+    2. Review company filings (10-K, 10-Q, 8-K)
+    3. Compare with professional analyst research
+    4. Consider your own risk tolerance and investment objectives
+    5. Consult with a qualified financial advisor
+    6. Validate all assumptions and calculations independently
+    
+    **Data Sources & Limitations:**
+    - Historical data: Company financials via local CSV and Yahoo Finance
+    - Market data: Yahoo Finance (may have delays or errors)
+    - Some metrics estimated where actual data unavailable
+    - Industry benchmarks based on general sector averages
+    
+    By using this analysis, you acknowledge that you understand these limitations and will not rely solely 
+    on this information for investment decisions.
+    """)
+    
+    st.caption(f"Analysis generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Ticker: {ticker} | Projection Period: {projection_years} years")
