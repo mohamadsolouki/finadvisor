@@ -17,17 +17,32 @@ def display_risk_analysis(ticker, cached_info):
     st.subheader("⚠️ Risk Analysis")
     st.markdown(f"Comprehensive risk assessment for **{ticker}**")
     
-    # Period selector
-    period = st.selectbox(
-        "Select Analysis Period",
-        ["1y", "2y", "3y", "5y"],
-        index=3,  # Default to 5y
-        key="risk_period"
-    )
+    # Date range selector
+    st.markdown("### 📅 Analysis Period")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        start_date = st.date_input(
+            "Start Date",
+            value=pd.to_datetime("2020-01-01"),
+            key="risk_start_date"
+        )
+    
+    with col2:
+        end_date = st.date_input(
+            "End Date",
+            value=pd.to_datetime("2024-12-31"),
+            key="risk_end_date"
+        )
+    
+    # Validate dates
+    if start_date >= end_date:
+        st.error("⚠️ Start date must be before end date")
+        return
     
     # Fetch historical data
-    with st.spinner(f"Loading {period} of historical data..."):
-        hist = get_historical_data(ticker, period=period)
+    with st.spinner(f"Loading historical data from {start_date} to {end_date}..."):
+        hist = get_historical_data(ticker, start_date=start_date, end_date=end_date)
     
     if hist.empty:
         st.error("⚠️ Unable to load historical data for risk analysis")
@@ -74,7 +89,7 @@ def display_risk_analysis(ticker, cached_info):
         # Fetch S&P 500 for beta calculation
         try:
             from utils.data_fetcher import get_historical_data as get_sp500_data
-            sp500 = get_sp500_data("^GSPC", period=period)
+            sp500 = get_sp500_data("^GSPC", start_date=start_date, end_date=end_date)
             
             if not sp500.empty:
                 sp500['Returns'] = sp500['Close'].pct_change()
@@ -139,10 +154,13 @@ def display_risk_analysis(ticker, cached_info):
     # Drawdown Analysis
     st.markdown("### 📊 Drawdown Analysis")
     
-    # Calculate cumulative returns and drawdown
+    # Calculate cumulative returns and drawdown (fixed calculation)
+    # Start with base value of 1, then calculate cumulative product
     hist['Cumulative'] = (1 + hist['Returns']).cumprod()
-    hist['Running_Max'] = hist['Cumulative'].expanding().max()
-    hist['Drawdown'] = (hist['Cumulative'] / hist['Running_Max'] - 1) * 100
+    # Calculate running maximum (peak) value
+    hist['Running_Max'] = hist['Cumulative'].cummax()
+    # Drawdown is the percentage decline from the peak
+    hist['Drawdown'] = ((hist['Cumulative'] - hist['Running_Max']) / hist['Running_Max']) * 100
     
     max_drawdown = hist['Drawdown'].min()
     
@@ -286,7 +304,7 @@ def display_risk_analysis(ticker, cached_info):
         showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=-0.15, xanchor="center", x=0.5),
         template='plotly_white',
-        title_text=f"{ticker} Comprehensive Risk Analysis Dashboard - {period} Period",
+        title_text=f"{ticker} Comprehensive Risk Analysis Dashboard - {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
         title_x=0.5
     )
     
@@ -323,8 +341,9 @@ def display_risk_analysis(ticker, cached_info):
             downside_deviation = downside_returns.std() * np.sqrt(252) * 100
             
             # Prepare comprehensive risk data
+            date_range_str = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
             risk_summary = f"""
-**Risk Metrics Summary for {ticker} ({period} period):**
+**Risk Metrics Summary for {ticker} ({date_range_str}):**
 
 **Volatility Metrics:**
 - Daily Volatility: {daily_vol*100:.2f}%
@@ -361,6 +380,8 @@ def display_risk_analysis(ticker, cached_info):
 
 {risk_summary}
 {beta_context}
+
+**Analysis Period**: {date_range_str}
 
 **Visual Dashboard Context:**
 The comprehensive risk dashboard shows 4 key visualizations:

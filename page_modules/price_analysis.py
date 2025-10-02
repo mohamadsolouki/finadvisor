@@ -15,17 +15,33 @@ def display_price_analysis(ticker, cached_info=None):
     """Display price analysis page"""
     st.subheader("📈 Stock Price Analysis & Technical Indicators")
     
-    # Time period selector
-    col1, col2, col3 = st.columns([2, 1, 1])
+    # Date range selector
+    st.markdown("### 📅 Analysis Period")
+    col1, col2 = st.columns(2)
+    
     with col1:
-        st.markdown("### Market Data")
+        start_date = st.date_input(
+            "Start Date",
+            value=pd.to_datetime("2020-01-01"),
+            key="price_start_date"
+        )
+    
     with col2:
-        period = st.selectbox("Select Period", ["1mo", "3mo", "6mo", "1y", "2y", "5y", "max"], index=6)  # Default to max
-    with col3:
-        st.write("")  # Spacer
+        end_date = st.date_input(
+            "End Date",
+            value=pd.to_datetime("2024-12-31"),
+            key="price_end_date"
+        )
+    
+    # Validate dates
+    if start_date >= end_date:
+        st.error("⚠️ Start date must be before end date")
+        return
+    
+    st.markdown("### Market Data")
     
     # Use cached info if available, otherwise fetch
-    hist = get_historical_data(ticker, period=period)
+    hist = get_historical_data(ticker, start_date=start_date, end_date=end_date)
     info = cached_info if cached_info else get_stock_info(ticker)
     
     if hist is None or hist.empty:
@@ -237,9 +253,10 @@ def display_price_analysis(ticker, cached_info=None):
             returns_1y_str = f"{returns_1y:+.2f}%" if returns_1y is not None else "N/A"
             
             # Build comprehensive prompt
+            date_range_str = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
             prompt = f"""You are a senior equity research analyst and technical analyst specializing in stock price analysis and technical indicators.
 
-**{company_name} ({ticker}) - Price Analysis for Period: {period}**
+**{company_name} ({ticker}) - Price Analysis for Period: {date_range_str}**
 
 **Long-Term Trend (2020-Present):**
 - Price in 2020: {price_2020_str}
@@ -275,9 +292,9 @@ The analysis includes four key visualizations:
 **Your Task:**
 Provide a comprehensive price and technical analysis (700-900 words) that covers:
 
-1. **Long-Term Trend Analysis (2020-Present)**: Analyze the {change_from_2020_str} change from 2020. What does this trajectory tell us? Reference the candlestick chart.
+1. **Long-Term Trend Analysis**: Analyze the {change_from_2020_str} change from 2020 baseline. What does this trajectory tell us over the {date_range_str} period? Reference the candlestick chart.
 
-2. **Recent Price Action**: Examine the {period} period trend. Uptrend, downtrend, or consolidation? Reference candlestick chart.
+2. **Recent Price Action**: Examine the price trend over the selected period. Uptrend, downtrend, or consolidation? Reference candlestick chart.
 
 3. **Technical Indicators**: Evaluate RSI at {current_rsi:.1f}, price vs moving averages, and Bollinger Band position. What do they signal?
 

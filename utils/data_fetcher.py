@@ -131,8 +131,15 @@ def get_stock_info(ticker):
 
 
 @st.cache_data(ttl=7200, show_spinner=False)  # Cache for 2 hours
-def get_historical_data(ticker, period="5y"):
-    """Fetch only historical price data with retry logic"""
+def get_historical_data(ticker, period="5y", start_date=None, end_date=None):
+    """Fetch only historical price data with retry logic
+    
+    Args:
+        ticker: Stock ticker symbol
+        period: Time period (e.g., '1y', '5y') - used if start_date and end_date are None
+        start_date: Start date for custom range (datetime or string 'YYYY-MM-DD')
+        end_date: End date for custom range (datetime or string 'YYYY-MM-DD')
+    """
     max_retries = 3
     last_error = None
     
@@ -145,11 +152,16 @@ def get_historical_data(ticker, period="5y"):
             # Create ticker object
             stock = yf.Ticker(ticker)
             
-            # Fetch historical data
-            hist = stock.history(period=period)
+            # Fetch historical data - use date range if provided, otherwise use period
+            if start_date and end_date:
+                hist = stock.history(start=start_date, end=end_date)
+                range_desc = f"from {start_date} to {end_date}"
+            else:
+                hist = stock.history(period=period)
+                range_desc = f"period={period}"
             
             if hist.empty:
-                last_error = f"No data for period={period}"
+                last_error = f"No data for {range_desc}"
                 if attempt < max_retries - 1:
                     continue
                 else:
