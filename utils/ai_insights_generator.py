@@ -43,32 +43,81 @@ class AIInsightsGenerator:
             self.client = None
             self.enabled = False
         else:
-            self.client = OpenAI(api_key=api_key)
-            self.enabled = True
+            try:
+                self.client = OpenAI(api_key=api_key)
+                self.enabled = True
+            except Exception as e:
+                # Log error but don't crash the app
+                st.error(f"Failed to initialize OpenAI client: {str(e)}")
+                self.client = None
+                self.enabled = False
     
     def _get_api_key(self) -> Optional[str]:
         """Get OpenAI API key from Streamlit secrets or environment variables"""
+        api_key = None
+        
+        # Method 1: Try Streamlit secrets (standard way)
         try:
-            # Try Streamlit secrets first (for cloud deployment)
-            if hasattr(st, 'secrets') and 'general' in st.secrets:
-                return st.secrets.general.get('OPENAI_API_KEY')
-        except Exception:
+            api_key = st.secrets["general"]["OPENAI_API_KEY"]
+            if api_key and api_key.strip():
+                return api_key.strip()
+        except (AttributeError, KeyError, Exception):
             pass
         
-        # Fallback to environment variable (for local development)
-        return os.getenv('OPENAI_API_KEY')
+        # Method 2: Try alternative secrets access
+        try:
+            api_key = st.secrets.general.OPENAI_API_KEY
+            if api_key and api_key.strip():
+                return api_key.strip()
+        except (AttributeError, KeyError, Exception):
+            pass
+        
+        # Method 3: Try direct secrets access
+        try:
+            api_key = st.secrets.OPENAI_API_KEY
+            if api_key and api_key.strip():
+                return api_key.strip()
+        except (AttributeError, KeyError, Exception):
+            pass
+        
+        # Method 4: Fallback to environment variable (for local development)
+        api_key = os.getenv('OPENAI_API_KEY')
+        if api_key and api_key.strip():
+            return api_key.strip()
+            
+        return None
     
     def _get_model(self) -> str:
         """Get OpenAI model from Streamlit secrets or environment variables"""
+        default_model = 'gpt-4o-mini'
+        
+        # Method 1: Try Streamlit secrets (standard way)
         try:
-            # Try Streamlit secrets first (for cloud deployment)
-            if hasattr(st, 'secrets') and 'general' in st.secrets:
-                return st.secrets.general.get('OPENAI_MODEL', 'gpt-4o-mini')
-        except Exception:
+            model = st.secrets["general"]["OPENAI_MODEL"]
+            if model and model.strip():
+                return model.strip()
+        except (AttributeError, KeyError, Exception):
             pass
         
-        # Fallback to environment variable (for local development)
-        return os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+        # Method 2: Try alternative secrets access
+        try:
+            model = st.secrets.general.OPENAI_MODEL
+            if model and model.strip():
+                return model.strip()
+        except (AttributeError, KeyError, Exception):
+            pass
+        
+        # Method 3: Try direct secrets access
+        try:
+            model = st.secrets.OPENAI_MODEL
+            if model and model.strip():
+                return model.strip()
+        except (AttributeError, KeyError, Exception):
+            pass
+        
+        # Method 4: Fallback to environment variable
+        model = os.getenv('OPENAI_MODEL', default_model)
+        return model if model else default_model
     
     def _get_insights_file_path(self, category_name: str) -> Path:
         """Get the file path for storing insights for a category"""
