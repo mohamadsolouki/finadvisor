@@ -62,6 +62,19 @@ st.markdown("""
         border-radius: 5px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
+    /* Sidebar improvements */
+    [data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+    }
+    [data-testid="stSidebar"] .stRadio > label {
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+    /* Compact expanders */
+    [data-testid="stSidebar"] .streamlit-expanderHeader {
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -210,11 +223,11 @@ def main():
         st.session_state.last_fetch_time = None
     
     # Sidebar Navigation
-    st.sidebar.title("📊 Navigation")
+    st.sidebar.title("📊 Qualcomm Analysis")
     
     # Navigation pages
     page = st.sidebar.radio(
-        "Pages",
+        "Select Analysis",
         ["Executive Summary", "Financial Analysis", "Price Analysis", 
          "ESG Analysis", "Industry Benchmarking", "Risk Analysis", 
          "Financial Projections", "Custom Analysis"],
@@ -233,74 +246,62 @@ def main():
         report_gen = ReportGenerator(full_data, categorized_data, analyzer)
         ai_generator = AIInsightsGenerator(data_dir)
         
-        st.sidebar.markdown("---")
+        # AI Status (compact)
+        with st.sidebar.expander("🤖 AI Insights", expanded=False):
+            if ai_generator.enabled:
+                st.success(f"✅ Enabled ({ai_generator.model})")
+                if st.button("🗑️ Clear AI Cache", use_container_width=True):
+                    ai_generator.clear_cache()
+                    st.success("Cache cleared!")
+            else:
+                st.warning("⚠️ Disabled")
+                st.caption("Add OpenAI API key to .env file")
         
-        # Data refresh section
-        st.sidebar.subheader("⚙️ Data Management")
-        
-        if st.sidebar.button("🔄 Clear Cache & Refresh Data"):
-            st.cache_data.clear()
-            st.session_state.last_fetch_time = None
-            st.sidebar.success("✅ Cache cleared!")
-            st.sidebar.warning("⏱️ Please wait 30 seconds before navigating to avoid rate limits.")
-            time.sleep(1)
-            st.rerun()
-        
-        # Show last fetch time
-        if st.session_state.last_fetch_time:
-            time_diff = datetime.now() - st.session_state.last_fetch_time
-            minutes = time_diff.seconds // 60
-            st.sidebar.caption(f"📅 Last refreshed: {minutes} min ago" if minutes > 0 else "📅 Just refreshed")
-        
-        st.sidebar.markdown("---")
-        
-        # AI Configuration Status
-        st.sidebar.subheader("🤖 AI Insights")
-        if ai_generator.enabled:
-            st.sidebar.success("✅ AI insights enabled")
-            st.sidebar.caption(f"Model: {ai_generator.model}")
-            
-            # Add button to clear AI cache
-            if st.sidebar.button("🗑️ Clear AI Cache", help="Clear all cached AI insights"):
-                ai_generator.clear_cache()
-                st.sidebar.success("Cache cleared!")
-        else:
-            st.sidebar.warning("⚠️ AI insights disabled")
-            st.sidebar.caption("Add OpenAI API key to .env file")
-        
-        st.sidebar.markdown("---")
-        
-        # Cache Management
-        st.sidebar.subheader("🔄 Cache Management")
-        col1, col2 = st.sidebar.columns(2)
-        with col1:
-            if st.button("🗑️ Clear All Cache", help="Clear all cached data and force refresh", use_container_width=True):
+        # Data Management (compact)
+        with st.sidebar.expander("⚙️ Data & Cache", expanded=False):
+            if st.button("� Clear All Cache", use_container_width=True):
                 st.cache_data.clear()
                 st.session_state.last_fetch_time = None
-                st.success("✅ Cache cleared! Page will reload.")
+                ai_generator.clear_cache()
+                st.success("✅ Cache cleared!")
+                time.sleep(1)
                 st.rerun()
-        with col2:
+            
+            # Show last fetch time
             if st.session_state.last_fetch_time:
-                time_since = (datetime.now() - st.session_state.last_fetch_time).total_seconds() / 60
-                st.caption(f"Last fetch: {time_since:.0f}m ago")
+                time_diff = datetime.now() - st.session_state.last_fetch_time
+                minutes = time_diff.seconds // 60
+                st.caption(f"📅 Last refresh: {minutes}m ago" if minutes > 0 else "📅 Just refreshed")
             else:
-                st.caption("No data cached")
+                st.caption("� No cached data")
         
-        st.sidebar.info("""
-        **📊 Data Sources:**
-        - Financial Statements: CSV file
-        - Market Data: Yahoo Finance API
+        st.sidebar.markdown("---")
         
-        **⚡ Performance:**
-        - Data cached for 2 hours
-        - Reduces API calls
-        - Avoids rate limiting
-        
-        **💡 Tips:**
-        - If you see errors, click "Clear All Cache"
-        - Wait 5-10 min if rate-limited
-        - Data updates automatically
-        """)
+        # Export Reports (compact with expander)
+        with st.sidebar.expander("📥 Export Reports", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("📄 PDF", use_container_width=True):
+                    with st.spinner("Generating..."):
+                        pdf_buffer = report_gen.generate_pdf_report()
+                        st.download_button(
+                            label="⬇️ Download",
+                            data=pdf_buffer,
+                            file_name=f"QCOM_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+            with col2:
+                if st.button("📊 Excel", use_container_width=True):
+                    with st.spinner("Generating..."):
+                        excel_buffer = report_gen.generate_excel_report()
+                        st.download_button(
+                            label="⬇️ Download",
+                            data=excel_buffer,
+                            file_name=f"QCOM_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
         
         # Fetch Yahoo Finance data once and cache it
         if page in ["Price Analysis", "ESG Analysis", "Industry Benchmarking", "Risk Analysis"]:
@@ -310,32 +311,6 @@ def main():
                     st.session_state.last_fetch_time = datetime.now()
         else:
             cached_info = None
-        
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("Export Options")
-        
-        # Export buttons
-        if st.sidebar.button("📄 Generate PDF Report", use_container_width=True):
-            with st.spinner("Generating PDF report..."):
-                pdf_buffer = report_gen.generate_pdf_report()
-                st.sidebar.download_button(
-                    label="⬇️ Download PDF",
-                    data=pdf_buffer,
-                    file_name=f"Qualcomm_Financial_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-        
-        if st.sidebar.button("📊 Generate Excel Report", use_container_width=True):
-            with st.spinner("Generating Excel report..."):
-                excel_buffer = report_gen.generate_excel_report()
-                st.sidebar.download_button(
-                    label="⬇️ Download Excel",
-                    data=excel_buffer,
-                    file_name=f"Qualcomm_Financial_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
         
         # Main content based on page selection
         if page == "Executive Summary":
