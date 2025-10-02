@@ -65,4 +65,8 @@ def normalize_markdown_spacing(text: str | None) -> str | None:
     cleaned = re.sub(r"\*\s+\*", "**", cleaned)
     cleaned = re.sub(r"_\s+_", "__", cleaned)
 
+    # Escape dollar signs to prevent them from being interpreted as LaTeX/KaTeX delimiters
+    # This prevents price values like $78.04 from being rendered as math formulas
+    cleaned = cleaned.replace("$", r"\$")
+
     return cleaned
