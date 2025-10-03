@@ -461,17 +461,48 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
         cost_of_equity = risk_free_rate + beta * equity_risk_premium
         
         # Get actual debt and interest expense for cost of debt calculation
+        # First try from historical_data, then try fetching fresh from yfinance balance sheet
         total_debt = 0
         if historical_data.get('total_debt') and len(historical_data['total_debt']) > 0:
             total_debt = historical_data['total_debt'][-1]
-        else:
-            # Fallback: estimate from balance sheet
-            total_assets = historical_data['total_assets'][-1] if historical_data['total_assets'] else 0
-            total_equity = historical_data['total_equity'][-1] if historical_data['total_equity'] else 0
+        elif ticker:
+            # Try to fetch from balance sheet
+            try:
+                import yfinance as yf
+                stock = yf.Ticker(ticker)
+                bs = stock.balance_sheet
+                if not bs.empty:
+                    debt_fields = ['Total Debt', 'TotalDebt']
+                    for field in debt_fields:
+                        if field in bs.index:
+                            total_debt = bs.loc[field, bs.columns[0]] / 1e6  # Convert to millions
+                            break
+            except:
+                pass
+        
+        # If still no debt, estimate from balance sheet assets - equity
+        if total_debt == 0:
+            total_assets = historical_data['total_assets'][-1] if historical_data.get('total_assets') else 0
+            total_equity = historical_data['total_equity'][-1] if historical_data.get('total_equity') else 0
             total_debt = total_assets - total_equity if total_assets and total_equity else 0
             total_debt = max(0, total_debt)
         
-        equity = historical_data['total_equity'][-1] if historical_data['total_equity'] else 1
+        equity = historical_data['total_equity'][-1] if historical_data.get('total_equity') else 1
+        
+        # Try to get equity from balance sheet if not in historical data
+        if equity <= 1 and ticker:
+            try:
+                import yfinance as yf
+                stock = yf.Ticker(ticker)
+                bs = stock.balance_sheet
+                if not bs.empty:
+                    equity_fields = ['Stockholders Equity', 'StockholdersEquity', 'Total Equity Gross Minority Interest']
+                    for field in equity_fields:
+                        if field in bs.index:
+                            equity = bs.loc[field, bs.columns[0]] / 1e6  # Convert to millions
+                            break
+            except:
+                pass
         total_capital = total_debt + equity
         
         # Calculate actual cost of debt from interest expense if available
@@ -498,27 +529,25 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
             wacc = max(0.06, min(0.18, wacc))  # Keep within reasonable bounds
         
         # Project FCF with validated growth rate
-        # Use override if provided, otherwise use linear regression
+        # Use override if provided, otherwise use intelligent defaults
         if fcf_growth_override is not None:
             fcf_growth_rate = fcf_growth_override
         else:
+            # Get historical FCF growth from linear regression
             fcf_growth_rate = growth_rates['linear_regression'].get('free_cash_flow', 0.08)
-        
-        # Additional validation: FCF growth should be reasonable
-        revenue_growth = growth_rates['linear_regression'].get('revenue', 0.08)
-        # FCF growth shouldn't wildly exceed revenue growth without good reason
-        if fcf_growth_rate > revenue_growth * 1.5:
-            fcf_growth_rate = revenue_growth * 1.2  # Allow 20% premium max
-            st.info(f"📊 FCF growth adjusted to {fcf_growth_rate*100:.1f}% to align with revenue growth trends")
-        
-        # Cap FCF growth at reasonable levels based on industry
-        max_fcf_growth = 0.20  # 20% default
-        if industry_context:
-            max_fcf_growth = industry_context.get('industry_growth_cap', 0.20)
-        
-        # Don't cap FCF growth if user explicitly overrode it
-        if fcf_growth_override is None:
-            fcf_growth_rate = max(-0.10, min(max_fcf_growth, fcf_growth_rate))
+            revenue_growth = growth_rates['linear_regression'].get('revenue', 0.08)
+            
+            # If FCF growth is extreme (negative or too high), use revenue growth as baseline
+            if fcf_growth_rate < 0 or fcf_growth_rate > 0.25:
+                # Use revenue growth as proxy, slightly adjusted
+                fcf_growth_rate = min(0.12, max(0.08, revenue_growth * 0.9))
+            
+            # Apply reasonable industry-based caps
+            # Tech companies: 8-15%, Mature: 5-10%
+            if industry_context and industry_context.get('sector') == 'Technology':
+                fcf_growth_rate = min(0.15, max(0.08, fcf_growth_rate))
+            else:
+                fcf_growth_rate = min(0.12, max(0.05, fcf_growth_rate))
         
         # Terminal growth rate - should be GDP-like
         # Use override if provided
@@ -559,56 +588,41 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
         enterprise_value = sum(pv_fcf) + pv_terminal_value
         
         # Equity Value (in millions)
-        # Get cash from stock_info - try multiple fields
+        # Get cash - try multiple sources in priority order
         cash = 0
         cash_raw = stock_info.get('cash', stock_info.get('totalCash', 0))
         
-        # If still zero, try to fetch fresh data from Yahoo Finance
-        if cash_raw == 0 and ticker:
+        # If not in stock_info, try balance sheet directly (most reliable)
+        if (cash_raw == 0 or cash_raw is None) and ticker:
             try:
                 import yfinance as yf
                 stock = yf.Ticker(ticker)
-                fresh_info = stock.info
-                cash_raw = fresh_info.get('cash', fresh_info.get('totalCash', fresh_info.get('cashAndCashEquivalents', 0)))
-            except Exception as e:
-                st.warning(f"⚠️ Unable to fetch fresh cash data: {str(e)}")
-        
-        # If still zero, try from balance sheet (current assets)
-        if cash_raw == 0 and historical_data.get('current_assets'):
-            # Estimate cash as a portion of current assets (conservative estimate)
-            try:
-                current_assets = historical_data['current_assets'][-1] if historical_data['current_assets'] else 0
-                if current_assets > 0:
-                    # Typical cash ratio: 20-40% of current assets for tech companies
-                    cash_raw = current_assets * 0.25  # Conservative 25% estimate
-                    st.info(f"💡 Cash estimated from current assets (${cash_raw/1e3:.2f}B). Verify from balance sheet.")
+                bs = stock.balance_sheet
+                if not bs.empty:
+                    cash_fields = ['Cash And Cash Equivalents', 'CashAndCashEquivalents', 'Cash Cash Equivalents And Short Term Investments']
+                    for field in cash_fields:
+                        if field in bs.index:
+                            cash_raw = bs.loc[field, bs.columns[0]]  # Already in actual currency units
+                            break
             except:
                 pass
         
         # Convert to millions
-        if cash_raw > 1e6:  # If in dollars, convert to millions
+        if cash_raw and cash_raw > 1e6:  # If in dollars, convert to millions
             cash = cash_raw / 1e6
-        else:  # Already in millions or zero
+        elif cash_raw:
             cash = cash_raw
+        else:
+            cash = 0
         
-        # Get debt from stock_info, prefer fresh data
+        # Get debt from stock_info if not already set
         debt_from_stockinfo = stock_info.get('totalDebt', 0)
-        if debt_from_stockinfo > 1e6:  # If in dollars, convert to millions
+        if debt_from_stockinfo and debt_from_stockinfo > 1e6:  # If in dollars, convert to millions
             debt_from_stockinfo = debt_from_stockinfo / 1e6
         
-        # Use stock_info debt if available, otherwise use calculated debt from balance sheet
-        if debt_from_stockinfo > 0:
+        # Use stock_info debt if available and current total_debt is 0
+        if debt_from_stockinfo > 0 and total_debt == 0:
             total_debt = debt_from_stockinfo
-        # If both are zero, try to fetch fresh data
-        elif total_debt == 0 and ticker:
-            try:
-                import yfinance as yf
-                stock = yf.Ticker(ticker)
-                fresh_debt = stock.info.get('totalDebt', 0)
-                if fresh_debt > 1e6:
-                    total_debt = fresh_debt / 1e6
-            except:
-                pass
         
         equity_value = enterprise_value + cash - total_debt
         
@@ -753,6 +767,79 @@ def get_analyst_estimates(ticker):
         return None
 
 
+def get_ttm_data(ticker):
+    """Get trailing twelve months (TTM) data from yfinance to compare with current year projections"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        # Extract TTM data from info (these are automatically TTM values from yfinance)
+        ttm_data = {
+            'revenue': info.get('totalRevenue', None),  # TTM revenue
+            'net_income': info.get('netIncomeToCommon', None),  # TTM net income
+            'eps': info.get('trailingEps', None),  # TTM EPS
+            'free_cash_flow': None,  # Will calculate below
+            'operating_cf': info.get('operatingCashflow', None),  # TTM Operating CF
+            'ebitda': info.get('ebitda', None),  # TTM EBITDA
+        }
+        
+        # Calculate FCF more accurately from quarterly data
+        try:
+            # Get quarterly cashflow statement for more accurate TTM FCF
+            cashflow_q = stock.quarterly_cashflow
+            if not cashflow_q.empty:
+                # Get the most recent 4 quarters
+                cashflow_q = cashflow_q.T.sort_index(ascending=False)
+                
+                # Try to get Operating Cash Flow and CapEx from quarterly data
+                if 'Operating Cash Flow' in cashflow_q.columns or 'Total Cash From Operating Activities' in cashflow_q.columns:
+                    ocf_col = 'Operating Cash Flow' if 'Operating Cash Flow' in cashflow_q.columns else 'Total Cash From Operating Activities'
+                    operating_cf_q = cashflow_q[ocf_col].head(4).sum() if ocf_col in cashflow_q.columns else 0
+                    
+                    # Get CapEx (capital expenditure)
+                    capex_q = 0
+                    if 'Capital Expenditure' in cashflow_q.columns:
+                        capex_q = abs(cashflow_q['Capital Expenditure'].head(4).sum())
+                    elif 'Capital Expenditures' in cashflow_q.columns:
+                        capex_q = abs(cashflow_q['Capital Expenditures'].head(4).sum())
+                    
+                    # Calculate FCF = Operating CF - CapEx
+                    if operating_cf_q and operating_cf_q > 0:
+                        ttm_data['free_cash_flow'] = operating_cf_q - capex_q
+                        ttm_data['operating_cf'] = operating_cf_q  # Update with quarterly sum
+        except Exception as e:
+            pass
+        
+        # Fallback: Try to get FCF from info if quarterly calculation failed
+        if ttm_data['free_cash_flow'] is None:
+            fcf_info = info.get('freeCashflow', None)
+            if fcf_info:
+                ttm_data['free_cash_flow'] = fcf_info
+        
+        # Second fallback: Calculate from Operating CF - CapEx from info
+        if ttm_data['free_cash_flow'] is None and ttm_data['operating_cf']:
+            # Estimate CapEx as ~6% of operating CF if not available (conservative estimate)
+            capex_estimate = ttm_data['operating_cf'] * 0.06
+            ttm_data['free_cash_flow'] = ttm_data['operating_cf'] - capex_estimate
+        
+        # Convert to billions for revenue, net income, FCF, operating CF
+        if ttm_data['revenue']:
+            ttm_data['revenue'] = ttm_data['revenue'] / 1e9
+        if ttm_data['net_income']:
+            ttm_data['net_income'] = ttm_data['net_income'] / 1e9
+        if ttm_data['free_cash_flow']:
+            ttm_data['free_cash_flow'] = ttm_data['free_cash_flow'] / 1e9
+        if ttm_data['operating_cf']:
+            ttm_data['operating_cf'] = ttm_data['operating_cf'] / 1e9
+        if ttm_data['ebitda']:
+            ttm_data['ebitda'] = ttm_data['ebitda'] / 1e9
+            
+        return ttm_data
+    except Exception as e:
+        st.warning(f"Could not fetch TTM data: {str(e)}")
+        return None
+
+
 def display_financial_projections(ticker, cached_info):
     """Display advanced financial projections page with multiple methodologies"""
     st.subheader("🔮 Advanced Financial Projections & Valuation")
@@ -796,6 +883,9 @@ def display_financial_projections(ticker, cached_info):
         st.error("⚠️ Unable to fetch historical financial data for projections")
         st.info("💡 This feature requires access to detailed financial statements. Some companies may have limited data availability.")
         return
+    
+    # Fetch TTM data for current year comparison
+    ttm_data = get_ttm_data(ticker)
     
     # Display comprehensive historical performance (2020-2024)
     st.markdown("---")
@@ -1092,6 +1182,70 @@ def display_financial_projections(ticker, cached_info):
     if enable_monte_carlo:
         st.caption("📊 **Chart includes Monte Carlo confidence intervals** (shaded blue area shows 10th-90th percentile range from 1000 simulations)")
     
+    # Display TTM data comparison for 2025 projections
+    if ttm_data and any(ttm_data.values()):
+        st.markdown("---")
+        st.markdown("### 📍 TTM Data vs 2025 Projection Accuracy Check")
+        st.markdown("**Current Performance Validation:** Since it's been almost one year past the last fiscal year (2024), we can compare actual TTM (Trailing Twelve Months) data with our 2025 linear regression projections to evaluate how well our model is tracking")
+        
+        # Calculate 2025 projected values (first year of projection)
+        proj_2025_revenue = projections['revenue']['projected_values'][0]/1e3 if 'revenue' in projections and len(projections['revenue']['projected_values']) > 0 else None
+        proj_2025_ni = projections['net_income']['projected_values'][0]/1e3 if 'net_income' in projections and len(projections['net_income']['projected_values']) > 0 else None
+        proj_2025_eps = projections['eps']['projected_values'][0] if 'eps' in projections and len(projections['eps']['projected_values']) > 0 else None
+        proj_2025_fcf = projections['free_cash_flow']['projected_values'][0]/1e3 if 'free_cash_flow' in projections and len(projections['free_cash_flow']['projected_values']) > 0 else None
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if ttm_data.get('revenue') and proj_2025_revenue:
+                ttm_rev = ttm_data['revenue']
+                diff_pct = ((ttm_rev - proj_2025_revenue) / proj_2025_revenue) * 100
+                st.metric(
+                    "Revenue (TTM Actual)",
+                    f"${ttm_rev:.2f}B",
+                    f"{diff_pct:+.1f}% vs Projection",
+                    delta_color="normal"
+                )
+                st.caption(f"📊 2025 Projection: ${proj_2025_revenue:.2f}B")
+        
+        with col2:
+            if ttm_data.get('net_income') and proj_2025_ni:
+                ttm_ni = ttm_data['net_income']
+                diff_pct = ((ttm_ni - proj_2025_ni) / proj_2025_ni) * 100
+                st.metric(
+                    "Net Income (TTM Actual)",
+                    f"${ttm_ni:.2f}B",
+                    f"{diff_pct:+.1f}% vs Projection",
+                    delta_color="normal"
+                )
+                st.caption(f"📊 2025 Projection: ${proj_2025_ni:.2f}B")
+        
+        with col3:
+            if ttm_data.get('eps') and proj_2025_eps:
+                ttm_eps = ttm_data['eps']
+                diff_pct = ((ttm_eps - proj_2025_eps) / proj_2025_eps) * 100
+                st.metric(
+                    "EPS (TTM Actual)",
+                    f"${ttm_eps:.2f}",
+                    f"{diff_pct:+.1f}% vs Projection",
+                    delta_color="normal"
+                )
+                st.caption(f"📊 2025 Projection: ${proj_2025_eps:.2f}")
+        
+        with col4:
+            if ttm_data.get('free_cash_flow') and proj_2025_fcf:
+                ttm_fcf = ttm_data['free_cash_flow']
+                diff_pct = ((ttm_fcf - proj_2025_fcf) / proj_2025_fcf) * 100
+                st.metric(
+                    "FCF (TTM Actual)",
+                    f"${ttm_fcf:.2f}B",
+                    f"{diff_pct:+.1f}% vs Projection",
+                    delta_color="normal"
+                )
+                st.caption(f"📊 2025 Projection: ${proj_2025_fcf:.2f}B")
+        
+        st.caption("📍 **TTM Data Source:** Yahoo Finance (yfinance) - Most recent 12-month actual performance | **Purpose:** Validates linear regression projection accuracy by comparing predicted 2025 values with current actual performance")
+    
     # Add projection assumptions and limitations
     with st.expander("⚠️ Projection Methodology & Important Limitations", expanded=False):
         st.markdown("""
@@ -1192,157 +1346,13 @@ def display_financial_projections(ticker, cached_info):
     st.markdown("---")
     st.markdown("### 💰 DCF Valuation Analysis")
     st.markdown("**Discounted Cash Flow Model** - Intrinsic value estimation based on projected free cash flows")
-    st.info("📊 **Enhanced DCF Model**: Uses historical CapEx intensity, actual cost of debt from interest expense, industry-adjusted terminal growth, and includes sensitivity analysis")
-    
-    # Advanced DCF Settings
-    with st.expander("⚙️ Advanced DCF Settings (Adjust assumptions to align with analyst consensus)", expanded=False):
-        st.markdown("### 🎯 Adjust Key Assumptions")
-        st.markdown("Use these controls to make your DCF more conservative or align with analyst assumptions.")
-        
-        # Conservative mode toggle
-        use_conservative = st.checkbox(
-            "Use Conservative Assumptions (Recommended for alignment with analysts)",
-            value=False,
-            help="Applies more conservative growth rates and higher discount rate to reduce terminal value weight"
-        )
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("**📊 Growth Rates**")
-            
-            # FCF Growth Rate Override
-            fcf_growth_override = st.slider(
-                "FCF Growth Rate (%)",
-                min_value=0.0,
-                max_value=25.0,
-                value=10.0 if use_conservative else None,
-                step=0.5,
-                help="Override FCF growth rate. Analysts typically use 8-12% for mature tech companies. Set to match analyst assumptions.",
-                key="fcf_growth_override"
-            )
-            
-            # Terminal Growth Override
-            terminal_growth_override = st.slider(
-                "Terminal Growth Rate (%)",
-                min_value=1.0,
-                max_value=4.0,
-                value=2.0 if use_conservative else 2.5,
-                step=0.1,
-                help="Long-term perpetual growth rate. Conservative: 2.0-2.5%. GDP growth ~2.5%."
-            )
-        
-        with col2:
-            st.markdown("**💰 Discount Rate (WACC)**")
-            
-            wacc_adjustment = st.slider(
-                "WACC Adjustment (%)",
-                min_value=-2.0,
-                max_value=+3.0,
-                value=+1.0 if use_conservative else 0.0,
-                step=0.1,
-                help="Adjust WACC up (more conservative) or down. +1% makes valuation more conservative."
-            )
-            
-            # Risk-free rate override
-            rf_override = st.number_input(
-                "Risk-Free Rate (%)",
-                min_value=2.0,
-                max_value=7.0,
-                value=4.5,
-                step=0.1,
-                help="Current 10-year Treasury rate. Update based on market conditions."
-            )
-        
-        with col3:
-            st.markdown("**📈 Projection Period**")
-            
-            dcf_years_override = st.slider(
-                "DCF Projection Years",
-                min_value=3,
-                max_value=10,
-                value=5,
-                help="Longer period = less terminal value weight (more reliable)"
-            )
-            
-            st.markdown("**💡 Quick Presets:**")
-            if st.button("Conservative (Analyst-like)"):
-                fcf_growth_override = 10.0
-                wacc_adjustment = 1.0
-                terminal_growth_override = 2.0
-                st.info("Applied conservative preset")
-            
-            if st.button("Aggressive (Bull Case)"):
-                fcf_growth_override = 15.0
-                wacc_adjustment = 0.0
-                terminal_growth_override = 2.5
-                st.info("Applied aggressive preset")
-        
-        # Show impact
-        if fcf_growth_override or wacc_adjustment != 0:
-            st.markdown("---")
-            st.markdown("**📊 Adjustments Summary:**")
-            if fcf_growth_override:
-                st.info(f"✓ FCF Growth Rate: {fcf_growth_override}% (vs {growth_rates['linear_regression'].get('free_cash_flow', 0)*100:.1f}% linear regression)")
-            if wacc_adjustment != 0:
-                st.info(f"✓ WACC Adjustment: {wacc_adjustment:+.1f}% (will {'increase' if wacc_adjustment > 0 else 'decrease'} discount rate)")
-            if terminal_growth_override != 2.5:
-                st.info(f"✓ Terminal Growth: {terminal_growth_override}% (vs 2.5% default)")
-    
-    # Optional: Manual data override if Yahoo Finance data is missing
-    with st.expander("🔧 Manual Data Override (Optional - Use if Yahoo Finance data is incomplete)", expanded=False):
-        st.markdown("**Override Cash & Debt Values:**")
-        st.markdown("If Yahoo Finance doesn't have accurate data, you can manually input values from the company's latest balance sheet.")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            manual_cash = st.number_input(
-                "Cash & Cash Equivalents ($B)",
-                min_value=0.0,
-                max_value=1000.0,
-                value=0.0,
-                step=0.1,
-                help="Enter cash from Balance Sheet in billions (e.g., 15.5 for $15.5B). Leave at 0 to use Yahoo Finance data."
-            )
-        
-        with col2:
-            manual_debt = st.number_input(
-                "Total Debt ($B)",
-                min_value=0.0,
-                max_value=1000.0,
-                value=0.0,
-                step=0.1,
-                help="Enter total debt (short-term + long-term) from Balance Sheet in billions. Leave at 0 to use Yahoo Finance data."
-            )
-        
-        # Override cached_info with manual values if provided
-        if manual_cash > 0:
-            cached_info['cash'] = manual_cash * 1e3  # Convert to millions
-            st.success(f"✅ Using manual cash value: ${manual_cash:.2f}B")
-        
-        if manual_debt > 0:
-            cached_info['totalDebt'] = manual_debt * 1e3  # Convert to millions
-            st.success(f"✅ Using manual debt value: ${manual_debt:.2f}B")
-        
-        if manual_cash > 0 or manual_debt > 0:
-            st.info("💡 **Manual values will override Yahoo Finance data in the DCF calculation below.**")
+    st.info("📊 **Automated DCF Model**: Intelligently selects growth rates, WACC, and terminal value assumptions based on historical data, industry context, and yfinance market data. All parameters are automatically optimized for reasonable valuations.")
     
     # Get industry context for DCF
     industry_context = get_industry_context(ticker, cached_info)
     
-    # Prepare DCF parameters (convert from percentage to decimal if overrides exist)
+    # No manual parameters - let the model use intelligent defaults
     dcf_params = {}
-    if 'fcf_growth_override' in locals() and fcf_growth_override is not None:
-        dcf_params['fcf_growth_override'] = fcf_growth_override / 100.0
-    if 'terminal_growth_override' in locals() and terminal_growth_override is not None:
-        dcf_params['terminal_growth_override'] = terminal_growth_override / 100.0
-    if 'wacc_adjustment' in locals():
-        dcf_params['wacc_adjustment'] = wacc_adjustment / 100.0
-    if 'rf_override' in locals() and rf_override is not None:
-        dcf_params['rf_override'] = rf_override / 100.0
-    if 'dcf_years_override' in locals() and dcf_years_override != 5:
-        projection_years = dcf_years_override
     
     with st.spinner("Calculating DCF valuation..."):
         dcf_results = calculate_dcf_valuation(
@@ -1351,19 +1361,6 @@ def display_financial_projections(ticker, cached_info):
         )
     
     if dcf_results:
-        # Check for significant divergence from analyst consensus
-        analyst_target = cached_info.get('targetMeanPrice', 0)
-        if analyst_target > 0:
-            dcf_vs_analyst_diff = ((dcf_results['fair_value_per_share'] - analyst_target) / analyst_target) * 100
-            
-            if abs(dcf_vs_analyst_diff) > 20:
-                st.warning(f"""
-                ⚠️ **Your DCF valuation (${dcf_results['fair_value_per_share']:.2f}) differs significantly from analyst consensus (${analyst_target:.2f}) by {abs(dcf_vs_analyst_diff):.1f}%**
-                
-                This suggests your assumptions may be too {'aggressive' if dcf_vs_analyst_diff > 0 else 'conservative'}. 
-                Use the "⚙️ Advanced DCF Settings" above to adjust growth rates, WACC, or enable Conservative mode for more reasonable valuations.
-                """)
-        
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -1560,151 +1557,7 @@ def display_financial_projections(ticker, cached_info):
             
             st.caption("**DCF Interpretation:** The DCF model estimates intrinsic value by discounting all future free cash flows to present value. A positive upside suggests the stock may be undervalued.")
             
-            # Add recommendations for alignment
-            st.markdown("---")
-            st.markdown("#### 💡 Making Your Model More Reasonable")
-            
-            # Get analyst target for comparison
-            analyst_target = cached_info.get('targetMeanPrice', 0)
-            if analyst_target > 0:
-                dcf_vs_analyst_diff = ((dcf_results['fair_value_per_share'] - analyst_target) / analyst_target) * 100
-                
-                if abs(dcf_vs_analyst_diff) > 20:
-                    st.warning(f"⚠️ **Your DCF is {abs(dcf_vs_analyst_diff):.1f}% {'higher' if dcf_vs_analyst_diff > 0 else 'lower'} than analyst consensus (${analyst_target:.2f})**")
-                    
-                    st.markdown("**Common reasons for divergence:**")
-                    
-                    if dcf_vs_analyst_diff > 20:
-                        st.markdown("""
-                        1. **FCF Growth Too Aggressive**: Your model uses {:.1f}% growth. Analysts typically use 8-12% for mature tech.
-                           - ✅ **Fix**: Use "Advanced DCF Settings" above to reduce FCF growth to ~10%
-                        
-                        2. **WACC Too Low**: Lower discount rates inflate valuations.
-                           - ✅ **Fix**: Add +1% to WACC using the adjustment slider
-                        
-                        3. **Terminal Value Weight**: Terminal value is {:.1f}% of enterprise value (should be <75%)
-                           - ✅ **Fix**: Increase projection years to 7-10 years to reduce terminal value weight
-                        
-                        4. **Terminal Growth**: Using {:.1f}% might be too high for mature companies
-                           - ✅ **Fix**: Reduce terminal growth to 2.0%
-                        """.format(
-                            dcf_results['fcf_growth_rate']*100,
-                            (dcf_results['pv_terminal_value'] / dcf_results['enterprise_value']) * 100,
-                            dcf_results['terminal_growth_rate']*100
-                        ))
-                        
-                        st.info("💡 **Quick Fix**: Enable 'Conservative Assumptions' in Advanced DCF Settings above for analyst-aligned valuation")
-                    
-                    else:
-                        st.markdown("""
-                        1. **FCF Growth Too Conservative**: Your model might be underestimating growth potential
-                        2. **WACC Too High**: Higher discount rates penalize future cash flows
-                        3. **Missing Growth Catalysts**: Analysts may factor in new products/markets
-                        """)
-                
-                else:
-                    st.success(f"✅ **Your DCF is well-aligned with analyst consensus** (within {abs(dcf_vs_analyst_diff):.1f}%)")
-            
-            # Show what reasonable ranges look like
-            st.markdown("---")
-            st.markdown("**📊 Reasonable Assumption Ranges:**")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.markdown("""
-                **FCF Growth:**
-                - Mature Tech: 8-12%
-                - High Growth: 12-18%
-                - Your Model: {:.1f}%
-                """.format(dcf_results['fcf_growth_rate']*100))
-            
-            with col2:
-                st.markdown("""
-                **WACC:**
-                - Low Risk: 7-9%
-                - Medium Risk: 9-11%
-                - High Risk: 11-14%
-                - Your Model: {:.2f}%
-                """.format(dcf_results['wacc']*100))
-            
-            with col3:
-                st.markdown("""
-                **Terminal Growth:**
-                - Conservative: 2.0%
-                - GDP-like: 2.5%
-                - Optimistic: 3.0%
-                - Your Model: {:.1f}%
-                """.format(dcf_results['terminal_growth_rate']*100))
-            
-            # Add data diagnostics section
-            with st.expander("🔍 Data Source Diagnostics (Click to see raw data from Yahoo Finance)", expanded=False):
-                st.markdown("**📊 Raw Data Retrieved from Yahoo Finance:**")
-                st.markdown("This shows what data is actually available for this ticker. Use this to diagnose missing values.")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("**Balance Sheet Data:**")
-                    cash_fields = {
-                        'cash': cached_info.get('cash', 'Not Available'),
-                        'totalCash': cached_info.get('totalCash', 'Not Available'),
-                        'cashAndCashEquivalents': cached_info.get('cashAndCashEquivalents', 'Not Available'),
-                        'totalDebt': cached_info.get('totalDebt', 'Not Available'),
-                        'shortLongTermDebt': cached_info.get('shortLongTermDebt', 'Not Available'),
-                        'longTermDebt': cached_info.get('longTermDebt', 'Not Available')
-                    }
-                    
-                    for field, value in cash_fields.items():
-                        if value == 'Not Available' or value == 0 or value is None:
-                            st.markdown(f"- ❌ **{field}**: {value}")
-                        else:
-                            display_val = f"${value/1e9:.2f}B" if isinstance(value, (int, float)) and value > 1e6 else value
-                            st.markdown(f"- ✅ **{field}**: {display_val}")
-                
-                with col2:
-                    st.markdown("**Market Data:**")
-                    market_fields = {
-                        'beta': cached_info.get('beta', 'Not Available'),
-                        'sharesOutstanding': cached_info.get('sharesOutstanding', 'Not Available'),
-                        'currentPrice': cached_info.get('currentPrice', 'Not Available'),
-                        'marketCap': cached_info.get('marketCap', 'Not Available'),
-                        'forwardPE': cached_info.get('forwardPE', 'Not Available'),
-                        'pegRatio': cached_info.get('pegRatio', 'Not Available')
-                    }
-                    
-                    for field, value in market_fields.items():
-                        if value == 'Not Available' or value == 0 or value is None:
-                            st.markdown(f"- ❌ **{field}**: {value}")
-                        else:
-                            if field == 'sharesOutstanding':
-                                display_val = f"{value/1e6:.0f}M shares"
-                            elif field == 'marketCap':
-                                display_val = f"${value/1e9:.2f}B"
-                            elif isinstance(value, (int, float)):
-                                display_val = f"{value:.2f}"
-                            else:
-                                display_val = value
-                            st.markdown(f"- ✅ **{field}**: {display_val}")
-                
-                st.markdown("---")
-                st.markdown("**💡 Troubleshooting Tips:**")
-                st.markdown("""
-                - **❌ (Not Available)**: Field not provided by Yahoo Finance for this ticker
-                - **0 or None**: Data exists but is zero or null
-                - **✅ (with value)**: Data successfully retrieved
-                
-                **If cash/debt is missing:**
-                1. Yahoo Finance may not have complete data for this ticker
-                2. Try checking the company's investor relations website
-                3. Look up the latest 10-Q/10-K filing on [SEC.gov](https://www.sec.gov/edgar)
-                4. Some tickers (especially non-US) may have limited data
-                
-                **Alternative approach:**
-                - Use the company's latest Balance Sheet to manually verify:
-                  - Cash and Cash Equivalents
-                  - Total Debt (Short-term + Long-term)
-                  - Shares Outstanding (Diluted)
-                """)
+
     else:
         st.info("📊 DCF valuation requires positive free cash flow data. Ensure FCF metrics are available.")
     
@@ -1806,6 +1659,41 @@ def display_financial_projections(ticker, cached_info):
             final_eps = projections['eps']['projected_values'][-1] if 'eps' in projections else 0
             final_fcf = projections['free_cash_flow']['projected_values'][-1]/1e3 if 'free_cash_flow' in projections else 0
             
+            # Calculate 2025 projections for TTM comparison
+            proj_2025_revenue = projections['revenue']['projected_values'][0]/1e3 if 'revenue' in projections and len(projections['revenue']['projected_values']) > 0 else None
+            proj_2025_ni = projections['net_income']['projected_values'][0]/1e3 if 'net_income' in projections and len(projections['net_income']['projected_values']) > 0 else None
+            proj_2025_eps = projections['eps']['projected_values'][0] if 'eps' in projections and len(projections['eps']['projected_values']) > 0 else None
+            proj_2025_fcf = projections['free_cash_flow']['projected_values'][0]/1e3 if 'free_cash_flow' in projections and len(projections['free_cash_flow']['projected_values']) > 0 else None
+            
+            # Add TTM comparison context
+            ttm_context = ""
+            if ttm_data and any(ttm_data.values()):
+                ttm_rev = ttm_data.get('revenue')
+                ttm_ni = ttm_data.get('net_income')
+                ttm_eps = ttm_data.get('eps')
+                ttm_fcf = ttm_data.get('free_cash_flow')
+                
+                ttm_comparisons = []
+                if ttm_rev and proj_2025_revenue:
+                    diff = ((ttm_rev - proj_2025_revenue) / proj_2025_revenue) * 100
+                    ttm_comparisons.append(f"- TTM Revenue: ${ttm_rev:.2f}B (vs 2025 Projection: ${proj_2025_revenue:.2f}B, {diff:+.1f}% difference)")
+                if ttm_ni and proj_2025_ni:
+                    diff = ((ttm_ni - proj_2025_ni) / proj_2025_ni) * 100
+                    ttm_comparisons.append(f"- TTM Net Income: ${ttm_ni:.2f}B (vs 2025 Projection: ${proj_2025_ni:.2f}B, {diff:+.1f}% difference)")
+                if ttm_eps and proj_2025_eps:
+                    diff = ((ttm_eps - proj_2025_eps) / proj_2025_eps) * 100
+                    ttm_comparisons.append(f"- TTM EPS: ${ttm_eps:.2f} (vs 2025 Projection: ${proj_2025_eps:.2f}, {diff:+.1f}% difference)")
+                if ttm_fcf and proj_2025_fcf:
+                    diff = ((ttm_fcf - proj_2025_fcf) / proj_2025_fcf) * 100
+                    ttm_comparisons.append(f"- TTM FCF: ${ttm_fcf:.2f}B (vs 2025 Projection: ${proj_2025_fcf:.2f}B, {diff:+.1f}% difference)")
+                
+                if ttm_comparisons:
+                    ttm_context = f"""
+**TTM (Trailing Twelve Months) vs 2025 Projections:**
+{chr(10).join(ttm_comparisons)}
+(TTM data from Yahoo Finance - represents actual most recent 12-month performance to validate projection accuracy)
+"""
+            
             projection_summary = f"""
 **Comprehensive Financial Projection Analysis for {ticker}:**
 
@@ -1820,6 +1708,8 @@ def display_financial_projections(ticker, cached_info):
 - Method Used: Linear Regression with Monte Carlo Simulation
 - Linear Regression Revenue Growth: {growth_rates['linear_regression'].get('revenue', 0)*100:.2f}%
 - Monte Carlo Simulations: 1,000 iterations providing 10th-90th percentile confidence intervals
+
+{ttm_context}
 
 **Projections ({final_year}):**
 - Revenue: ${final_revenue:.2f}B
@@ -1889,34 +1779,33 @@ The comprehensive dashboard displays:
 4. **Free Cash Flow Chart**: Historical FCF generation + projected cash flows (used in DCF)
 
 **Your Task:**
-Provide an advanced, comprehensive financial projection and valuation analysis (900-1200 words) in flowing, narrative paragraph format.
+Provide an advanced, comprehensive financial projection and valuation analysis (700-900 words) in flowing, narrative paragraph format.
 
 Write as a cohesive equity research narrative that:
 
-1. **Opens with Historical Foundation & Trend Analysis**: Begin by analyzing the 5-year historical performance (2020-{base_year}), discussing the **{growth_rates['linear_regression'].get('revenue', 0)*100:.2f}% revenue growth rate** (linear regression) and **{growth_rates['volatility'].get('revenue', 0)*100:.2f}% volatility**. Establish whether these trends are sustainable and how the company's performance has evolved over this full period. Reference the complete historical data shown in all four charts.
+1. **Opens with Historical Foundation & Trend Analysis**: Begin by analyzing the 5-year historical performance (2020-{base_year}), discussing the **{growth_rates['linear_regression'].get('revenue', 0)*100:.2f}% annual revenue growth rate** derived from linear regression analysis and **{growth_rates['volatility'].get('revenue', 0)*100:.2f}% volatility**. Establish whether these trends are sustainable and how the company's performance has evolved. Reference the complete historical data shown in all four charts showing the trajectory from approximately **$30B in 2020** to **$50.2B in 2024**.
 
-2. **Evaluates Linear Regression Methodology**: Explain why linear regression is an appropriate methodology for {ticker} and how the **{growth_rates['linear_regression'].get('revenue', 0)*100:.2f}% revenue growth** rate captures the long-term growth trajectory. Discuss the statistical validity of this trend line and its implications for future performance.
+2. **Evaluates Linear Regression Methodology**: Explain why linear regression is the appropriate statistical methodology for {ticker}'s projections (NOT CAGR or compound growth). Discuss how the fitted trend line captures the long-term growth trajectory with a **{growth_rates['linear_regression'].get('revenue', 0)*100:.2f}% annual growth rate** and why this is more suitable than other methods given the company's stable growth pattern.
 
-3. **Analyzes Revenue & Profitability Projections**: Flow into detailed analysis of the projections showing revenue reaching **${final_revenue:.2f}B** and net income of **${final_ni:.2f}B** by {final_year}. Discuss margin trends, whether profitability is growing faster/slower than revenue, and what the historical charts (2020-{base_year}) suggest about future trajectory.
+3. **TTM Data Validation & 2025 Projection Accuracy**: Since it's been almost one year past the last fiscal year (2024), analyze the TTM (Trailing Twelve Months) actual data from Yahoo Finance compared to our 2025 linear regression projections. Discuss how closely the actual TTM performance aligns with our projected 2025 values, what any deviations tell us about projection accuracy, and whether adjustments to future year projections might be warranted based on this real-world validation. This comparison demonstrates how well the linear regression methodology is tracking actual performance.
 
-4. **Incorporates Monte Carlo Uncertainty Analysis**: Discuss the Monte Carlo simulation results showing confidence intervals. Explain how the **{growth_rates['volatility'].get('revenue', 0)*100:.2f}% historical volatility** creates a range of possible outcomes and what the 10th-90th percentile bands tell us about projection uncertainty. Reference the shaded confidence interval areas in the revenue chart.
+4. **Analyzes Projections & Monte Carlo Uncertainty**: Present the projected revenue of **${final_revenue:.2f}B**, net income of **${final_ni:.2f}B**, EPS of **${final_eps:.2f}**, and FCF of **${final_fcf:.2f}B** by {final_year}. Integrate the Monte Carlo simulation results that provide 10th-90th percentile confidence intervals, explaining how the **{growth_rates['volatility'].get('revenue', 0)*100:.2f}% historical volatility** creates probabilistic ranges. Discuss what these confidence bands reveal about projection uncertainty.
 
-5. **Integrates DCF Valuation Analysis**: Weave in the DCF valuation showing **${dcf_results.get('fair_value_per_share', 0):.2f} fair value** vs **${dcf_results.get('current_price', 0):.2f} current price** (if DCF available). Discuss whether the **{dcf_results.get('upside', 0):.1f}% implied upside/downside** makes sense given the projected FCF growth of **{dcf_results.get('fcf_growth_rate', 0)*100:.2f}%** and the **{dcf_results.get('wacc', 0)*100:.2f}% WACC** discount rate. Evaluate if the DCF assumptions are reasonable.
+5. **Detailed DCF Valuation Process**: Provide substantial detail on the DCF valuation methodology. Explain how we project free cash flows using the **{dcf_results.get('fcf_growth_rate', 0)*100:.2f}% FCF growth rate** over the projection period, then calculate terminal value using the **{dcf_results.get('terminal_growth_rate', 0)*100:.2f}% perpetual growth rate**. Discuss the **{dcf_results.get('wacc', 0)*100:.2f}% WACC** used as the discount rate and how this reflects the company's cost of capital. Walk through how these discounted cash flows yield an enterprise value of **${dcf_results.get('enterprise_value', 0)/1e3:.2f}B** and ultimately a fair value per share of **${dcf_results.get('fair_value_per_share', 0):.2f}**, compared to the current price of **${dcf_results.get('current_price', 0):.2f}**, implying **{dcf_results.get('upside', 0):.1f}% upside/downside**. Evaluate whether these DCF assumptions are reasonable given historical performance and TTM trends.
 
-6. **Compares with Market Expectations**: Compare our projections and DCF valuation with market expectations (analyst targets, forward P/E, PEG ratio). Explain any divergence between our analysis and market consensus. Discuss whether the market is pricing in expectations consistent with our linear regression projections.
+6. **Compares with Market Expectations**: Compare our DCF valuation and projections with market expectations, specifically referencing the analyst consensus price target of **{analyst_target_str}** (sourced from Yahoo Finance/yfinance), along with forward P/E and PEG ratios if available. Explain any divergence between our analysis and market consensus, and discuss whether the market is pricing in expectations consistent with our linear regression projections and TTM performance.
 
-7. **Addresses Key Assumptions, Risks & Sensitivities**: Throughout the narrative, acknowledge critical assumptions (linear growth trajectory, WACC, terminal growth, margin stability) and what could cause actuals to differ materially. Discuss how the Monte Carlo simulation helps quantify projection uncertainty. Reference industry context and competitive dynamics.
-
-8. **Synthesizes Valuation & Investment Thesis**: Build toward a comprehensive synthesis of all analysis—linear regression projections, Monte Carlo uncertainty, DCF valuation, market comparison—to form an investment thesis. Discuss what the stock might be worth in {projection_years} years and whether current valuation offers attractive risk/reward.
-
-9. **Concludes with Balanced Investment Recommendation**: End with a clear, balanced conclusion that ties together historical trends, linear regression projection analysis, Monte Carlo uncertainty assessment, valuation analysis, and market positioning. Provide perspective on whether {ticker} represents an attractive investment opportunity given all the analysis presented.
+7. **Synthesizes Investment Thesis & Conclusion**: Conclude by synthesizing all analysis—the linear regression projections showing **{growth_rates['linear_regression'].get('revenue', 0)*100:.2f}% annual growth**, TTM validation of 2025 projections, Monte Carlo uncertainty ranges, DCF intrinsic value of **${dcf_results.get('fair_value_per_share', 0):.2f}**, and comparison to the Yahoo Finance analyst target. Acknowledge key risks (growth assumptions, competitive pressures, macroeconomic factors) and provide a balanced investment perspective on whether {ticker} is attractively valued at current levels given the **{dcf_results.get('upside', 0):.1f}%** implied return.
 
 **Formatting Requirements:**
-- Write in flowing paragraphs (8-10 paragraphs total), NOT bullet points or multiple heading sections
+- Write in flowing paragraphs (7 paragraphs total), NOT bullet points or multiple heading sections
 - DO NOT use multiple heading levels (###) within your response - write as continuous prose
-- Bold all key figures, growth rates, and metrics: **$50.2B revenue**, **15.3% CAGR**, **$125 fair value**
+- Bold all key figures, growth rates, and metrics: **$50.2B revenue**, **10.53% annual growth**, **$182.06 fair value**
 - Use smooth transitions between paragraphs to maintain narrative flow
 - Write in an engaging, professional tone as if writing a comprehensive equity research report
+- Focus MORE on DCF valuation process and methodology
+- Always refer to LINEAR REGRESSION annual growth rates, never CAGR
+- Mention that analyst targets are from Yahoo Finance/yfinance
 
 Be highly specific, cite actual numbers from all projections/metrics/DCF, reference all four projection charts showing 2020-{final_year} data naturally within the narrative, integrate the linear regression methodology and Monte Carlo uncertainty analysis, and provide balanced, sophisticated analysis that a professional analyst would produce."""
             
@@ -1928,14 +1817,14 @@ Be highly specific, cite actual numbers from all projections/metrics/DCF, refere
                 
                 load_dotenv()
                 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-                model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+                model = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
                 
                 response = client.chat.completions.create(
                     model=model,
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a senior financial analyst and equity research professional with deep expertise in statistical financial modeling, linear regression analysis, DCF valuation, and Monte Carlo simulation. Write in flowing, paragraph-based narrative format, NOT as bullet points or multiple sections with headings. Integrate analytical frameworks (historical trend analysis, linear regression projections, Monte Carlo uncertainty analysis, DCF valuation, market comparison) seamlessly into a cohesive narrative. Provide sophisticated, balanced analysis that synthesizes the linear regression methodology and Monte Carlo confidence intervals naturally within the narrative, as you would in a comprehensive professional equity research report. Reference all charts and data spanning 2020 to future projections throughout your analysis."
+                            "content": "You are a senior financial analyst and equity research professional with deep expertise in statistical financial modeling, linear regression analysis, DCF valuation, and Monte Carlo simulation. Write in flowing, paragraph-based narrative format, NOT as bullet points or multiple sections with headings. Integrate analytical frameworks (historical trend analysis, linear regression projections, TTM data validation, Monte Carlo uncertainty analysis, DCF valuation, market comparison) seamlessly into a cohesive narrative. Provide sophisticated, balanced analysis that synthesizes the linear regression methodology, TTM validation of projections, and Monte Carlo confidence intervals naturally within the narrative, as you would in a comprehensive professional equity research report. Reference all charts and data spanning 2020 to future projections throughout your analysis."
                         },
                         {
                             "role": "user",
@@ -1971,67 +1860,4 @@ Be highly specific, cite actual numbers from all projections/metrics/DCF, refere
     else:
         st.info("🔑 **AI Advanced Analysis Unavailable**: Configure your OpenAI API key in the .env file to enable comprehensive AI-powered analysis that synthesizes linear regression projections, Monte Carlo uncertainty analysis, DCF valuation, historical trends (2020-present), and market expectations into a cohesive investment thesis and recommendation.")
     
-    # Final Summary and Important Disclosures
-    st.markdown("---")
-    st.markdown("### 📌 Key Takeaways & Critical Disclosures")
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### ✅ Strengths of This Analysis")
-        st.markdown("""
-        - **Comprehensive Historical Data**: 5-year trend analysis (2020-2024)
-        - **Statistical Methodology**: Linear regression captures long-term growth trajectory
-        - **Industry-Validated Growth Rates**: Capped at reasonable industry benchmarks
-        - **Monte Carlo Simulation**: 1,000 simulations provide probabilistic confidence intervals
-        - **Enhanced DCF Model**: Uses actual CapEx, debt costs, and industry-adjusted WACC
-        - **Sensitivity Analysis**: Shows impact of key assumption changes
-        - **Transparent Assumptions**: All inputs and calculations clearly documented
-        """)
-    
-    with col2:
-        st.markdown("#### ⚠️ Important Warnings & Limitations")
-        st.markdown("""
-        - **Not Financial Advice**: This is analytical tool output, not investment recommendations
-        - **Historical Bias**: Past growth rates may not continue in different market conditions
-        - **Model Assumptions**: Linear projections don't capture all real-world complexity
-        - **Data Quality**: Estimates used where actual data unavailable (e.g., some CapEx)
-        - **Market Changes**: Cannot predict disruption, competition, or macro shocks
-        - **DCF Sensitivity**: Small assumption changes significantly impact valuation
-        - **Requires Validation**: Cross-check with analyst consensus and company guidance
-        """)
-    
-    st.markdown("---")
-    st.error("""
-    **⚠️ CRITICAL DISCLAIMER - PLEASE READ**
-    
-    This financial projection and valuation analysis is provided for informational and educational purposes only. 
-    It is NOT investment advice, and should NOT be the sole basis for any investment decision.
-    
-    **Key Points:**
-    - Projections are based on historical data and mathematical models with inherent limitations
-    - Growth rates are capped at industry-reasonable levels, but no cap guarantees accuracy
-    - DCF valuations are highly sensitive to assumptions (WACC, terminal growth, FCF growth)
-    - Market conditions, competition, and company-specific factors can materially differ from projections
-    - Past performance does not guarantee future results
-    - All investments carry risk, including the potential loss of principal
-    
-    **Before Making Any Investment Decision:**
-    1. Conduct your own thorough research
-    2. Review company filings (10-K, 10-Q, 8-K)
-    3. Compare with professional analyst research
-    4. Consider your own risk tolerance and investment objectives
-    5. Consult with a qualified financial advisor
-    6. Validate all assumptions and calculations independently
-    
-    **Data Sources & Limitations:**
-    - Historical data: Company financials via local CSV and Yahoo Finance
-    - Market data: Yahoo Finance (may have delays or errors)
-    - Some metrics estimated where actual data unavailable
-    - Industry benchmarks based on general sector averages
-    
-    By using this analysis, you acknowledge that you understand these limitations and will not rely solely 
-    on this information for investment decisions.
-    """)
-    
-    st.caption(f"Analysis generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Ticker: {ticker} | Projection Period: {projection_years} years")
