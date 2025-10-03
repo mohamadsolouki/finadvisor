@@ -425,8 +425,22 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
                 capex_intensity = np.mean(capex_values)
         
         # Estimate WACC (Weighted Average Cost of Capital) with industry context
-        beta = stock_info.get('beta', 1.0)
+        # Get actual beta from Yahoo Finance, with fallback to refresh if needed
+        beta = stock_info.get('beta', None)
         if beta is None or beta == 0:
+            # Try to fetch fresh beta data
+            if ticker:
+                try:
+                    import yfinance as yf
+                    stock = yf.Ticker(ticker)
+                    beta = stock.info.get('beta', 1.0)
+                except:
+                    beta = 1.0
+            else:
+                beta = 1.0
+        # Ensure beta is reasonable (typically between 0.5 and 2.0 for most stocks)
+        if beta < 0.3 or beta > 3.0:
+            st.warning(f"⚠️ Beta of {beta:.2f} seems unusual. Using 1.0 for WACC calculation.")
             beta = 1.0
         
         # Use current 10-year Treasury rate (update this periodically)
@@ -521,10 +535,32 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
         enterprise_value = sum(pv_fcf) + pv_terminal_value
         
         # Equity Value (in millions)
-        cash = stock_info.get('cash', 0) / 1e6 if stock_info.get('cash', 0) > 1e6 else stock_info.get('cash', 0)  # Convert to millions if in dollars
-        # Use total_debt from earlier calculation, or get from stock_info
-        debt_from_stockinfo = stock_info.get('totalDebt', 0) / 1e6 if stock_info.get('totalDebt', 0) > 1e6 else stock_info.get('totalDebt', total_debt)
-        total_debt = debt_from_stockinfo if debt_from_stockinfo > 0 else total_debt  # Prefer stock_info, fallback to calculated
+        # Get cash from stock_info - try multiple fields
+        cash = 0
+        cash_raw = stock_info.get('cash', stock_info.get('totalCash', 0))
+        if cash_raw > 1e6:  # If in dollars, convert to millions
+            cash = cash_raw / 1e6
+        else:  # Already in millions or zero
+            cash = cash_raw
+        
+        # Get debt from stock_info, prefer fresh data
+        debt_from_stockinfo = stock_info.get('totalDebt', 0)
+        if debt_from_stockinfo > 1e6:  # If in dollars, convert to millions
+            debt_from_stockinfo = debt_from_stockinfo / 1e6
+        
+        # Use stock_info debt if available, otherwise use calculated debt from balance sheet
+        if debt_from_stockinfo > 0:
+            total_debt = debt_from_stockinfo
+        # If both are zero, try to fetch fresh data
+        elif total_debt == 0 and ticker:
+            try:
+                import yfinance as yf
+                stock = yf.Ticker(ticker)
+                fresh_debt = stock.info.get('totalDebt', 0)
+                if fresh_debt > 1e6:
+                    total_debt = fresh_debt / 1e6
+            except:
+                pass
         
         equity_value = enterprise_value + cash - total_debt
         
@@ -1158,9 +1194,9 @@ def display_financial_projections(ticker, cached_info):
                 st.markdown("**Cash Flow Assumptions:**")
                 st.markdown(f"""
                 - **Current FCF**: ${dcf_results['fcf_current']/1e3:.2f}B  
-                  *From: Historical financial statements*
+                  *From: Historical financial statements ({historical_data['years'][-1]})*
                 - **FCF Growth Rate**: {dcf_results['fcf_growth_rate']*100:.2f}%  
-                  *Based on: Linear regression growth rate, adjusted for industry norms*
+                  *Based on: Linear regression growth rate ({growth_rates['linear_regression'].get('free_cash_flow', 0)*100:.2f}%), adjusted for industry norms*
                 - **Terminal Growth**: {dcf_results['terminal_growth_rate']*100:.2f}%  
                   *Assumption: Long-term GDP growth + industry adjustment*
                 - **CapEx Intensity**: {dcf_results.get('capex_intensity', 0.06)*100:.1f}%  
@@ -1178,7 +1214,7 @@ def display_financial_projections(ticker, cached_info):
                 - **Cost of Debt**: {dcf_results.get('cost_of_debt', 0.05)*100:.2f}%  
                   *From: Interest expense / Total debt*
                 - **Beta**: {dcf_results.get('beta', 1.0):.2f}  
-                  *From: Yahoo Finance market data*
+                  *From: Yahoo Finance market data (measures stock volatility vs market)*
                 - **Risk-Free Rate**: {dcf_results.get('risk_free_rate', 0.045)*100:.2f}%  
                   *US 10-Year Treasury*
                 - **Equity Risk Premium**: {dcf_results.get('equity_risk_premium', 0.055)*100:.2f}%  
@@ -1188,13 +1224,23 @@ def display_financial_projections(ticker, cached_info):
             with col3:
                 st.markdown("**Capital Structure:**")
                 shares_m = dcf_results.get('shares_outstanding', 0) / 1e6
+                cash_val = dcf_results.get('cash', 0)
+                debt_val = dcf_results.get('debt', 0)
                 st.markdown(f"""
-                - **Total Debt**: ${dcf_results.get('debt', 0)/1e3:.2f}B
-                - **Cash**: ${dcf_results.get('cash', 0)/1e3:.2f}B
-                - **Net Debt**: ${(dcf_results.get('debt', 0) - dcf_results.get('cash', 0))/1e3:.2f}B
+                - **Total Debt**: ${debt_val/1e3:.2f}B
+                - **Cash**: ${cash_val/1e3:.2f}B
+                - **Net Debt**: ${(debt_val - cash_val)/1e3:.2f}B
                 - **Debt-to-Equity**: {debt_to_equity:.2f}x
                 - **Shares Outstanding**: {shares_m:.0f}M
                 """)
+                
+                # Add data validation warnings
+                if cash_val == 0:
+                    st.warning("⚠️ **Cash is $0**: This may indicate missing data from Yahoo Finance. Please verify actual cash position from company financials.")
+                if debt_val == 0:
+                    st.warning("⚠️ **Debt is $0**: This may indicate missing data or the company is debt-free. Please verify from company balance sheet.")
+                if dcf_results.get('beta', 1.0) == 1.0:
+                    st.info("ℹ️ **Beta = 1.0**: Using market beta (default). Actual beta may differ - verify from Yahoo Finance or Bloomberg.")
             
             st.markdown("---")
             st.markdown("#### 📊 Valuation Build-Up")
@@ -1302,6 +1348,7 @@ def display_financial_projections(ticker, cached_info):
     # Get analyst estimates
     st.markdown("---")
     st.markdown("### 🎯 Analyst Estimates & Market Expectations")
+    st.info("💡 **Note:** Analyst price targets shown below are from Wall Street analysts (source: Yahoo Finance) and are separate from our DCF valuation model above.")
     
     analyst_data = get_analyst_estimates(ticker)
     
@@ -1310,9 +1357,9 @@ def display_financial_projections(ticker, cached_info):
         
         with col1:
             st.metric(
-                "Analyst Price Target",
+                "Wall Street Analyst Price Target",
                 f"${analyst_data['price_target']:.2f}",
-                help="Mean analyst price target"
+                help="Mean price target from Wall Street analysts (source: Yahoo Finance)"
             )
         
         with col2:
@@ -1320,10 +1367,39 @@ def display_financial_projections(ticker, cached_info):
             if current_price > 0:
                 upside = ((analyst_data['price_target'] - current_price) / current_price) * 100
                 st.metric(
-                    "Potential Upside",
+                    "Analyst Target Upside",
                     f"{upside:.1f}%",
-                    help="Upside to analyst target price"
+                    help="Potential upside to Wall Street analyst consensus target"
                 )
+        
+        st.caption("📊 **Source:** Yahoo Finance aggregates price targets from multiple Wall Street analysts. This represents the mean (average) of all analyst targets and is independent of our DCF model calculation.")
+        
+        # Add comparison with DCF if both are available
+        if dcf_results and dcf_results.get('fair_value_per_share', 0) > 0:
+            st.markdown("#### 📊 DCF vs Analyst Target Comparison")
+            col1, col2, col3 = st.columns(3)
+            
+            dcf_fair_value = dcf_results['fair_value_per_share']
+            analyst_target = analyst_data['price_target']
+            
+            with col1:
+                st.metric("Our DCF Fair Value", f"${dcf_fair_value:.2f}")
+            
+            with col2:
+                st.metric("Analyst Consensus Target", f"${analyst_target:.2f}")
+            
+            with col3:
+                diff_pct = ((dcf_fair_value - analyst_target) / analyst_target) * 100
+                st.metric(
+                    "DCF vs Analyst Difference", 
+                    f"{diff_pct:+.1f}%",
+                    help="How much our DCF valuation differs from analyst consensus"
+                )
+            
+            if abs(diff_pct) > 20:
+                st.warning(f"⚠️ **Significant Difference:** Our DCF valuation differs from analyst consensus by {abs(diff_pct):.1f}%. This could indicate different growth assumptions, discount rates, or terminal value estimates. Review both methodologies carefully.")
+            else:
+                st.success(f"✅ **Reasonable Alignment:** Our DCF valuation is within {abs(diff_pct):.1f}% of analyst consensus, suggesting similar fundamental expectations.")
     else:
         st.info("📊 Analyst estimates and company guidance data limited for this ticker")
     
