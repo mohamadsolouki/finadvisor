@@ -1096,6 +1096,42 @@ def display_financial_projections(ticker, cached_info):
             ),
             row=1, col=2
         )
+        # Add Monte Carlo confidence interval if enabled
+        if enable_monte_carlo and 'net_income' in growth_rates['linear_regression']:
+            base_value = proj_data['historical_values'][-1]
+            mc_results = monte_carlo_simulation(
+                base_value,
+                growth_rates['linear_regression']['net_income'],
+                growth_rates['volatility'].get('net_income', 0.1),
+                projection_years,
+                1000
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=proj_data['projected_years'],
+                    y=[v/1e3 for v in mc_results['p90']],
+                    name='90th Percentile',
+                    line=dict(color='lightgreen', width=1, dash='dot'),
+                    mode='lines',
+                    showlegend=False,
+                    hovertemplate='P90: $%{y:.2f}B<extra></extra>'
+                ),
+                row=1, col=2
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=proj_data['projected_years'],
+                    y=[v/1e3 for v in mc_results['p10']],
+                    name='10th Percentile',
+                    line=dict(color='lightgreen', width=1, dash='dot'),
+                    fill='tonexty',
+                    fillcolor='rgba(144, 238, 144, 0.2)',
+                    mode='lines',
+                    showlegend=False,
+                    hovertemplate='P10: $%{y:.2f}B<extra></extra>'
+                ),
+                row=1, col=2
+            )
     
     # EPS projection with full historical context
     if 'eps' in projections:
@@ -1126,6 +1162,42 @@ def display_financial_projections(ticker, cached_info):
             ),
             row=2, col=1
         )
+        # Add Monte Carlo confidence interval if enabled
+        if enable_monte_carlo and 'eps' in growth_rates['linear_regression']:
+            base_value = proj_data['historical_values'][-1]
+            mc_results = monte_carlo_simulation(
+                base_value,
+                growth_rates['linear_regression']['eps'],
+                growth_rates['volatility'].get('eps', 0.1),
+                projection_years,
+                1000
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=proj_data['projected_years'],
+                    y=mc_results['p90'],
+                    name='90th Percentile',
+                    line=dict(color='plum', width=1, dash='dot'),
+                    mode='lines',
+                    showlegend=False,
+                    hovertemplate='P90: $%{y:.2f}<extra></extra>'
+                ),
+                row=2, col=1
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=proj_data['projected_years'],
+                    y=mc_results['p10'],
+                    name='10th Percentile',
+                    line=dict(color='plum', width=1, dash='dot'),
+                    fill='tonexty',
+                    fillcolor='rgba(221, 160, 221, 0.2)',
+                    mode='lines',
+                    showlegend=False,
+                    hovertemplate='P10: $%{y:.2f}<extra></extra>'
+                ),
+                row=2, col=1
+            )
     
     # Free Cash Flow projection with full historical context
     if 'free_cash_flow' in projections:
@@ -1156,6 +1228,42 @@ def display_financial_projections(ticker, cached_info):
             ),
             row=2, col=2
         )
+        # Add Monte Carlo confidence interval if enabled
+        if enable_monte_carlo and 'free_cash_flow' in growth_rates['linear_regression']:
+            base_value = proj_data['historical_values'][-1]
+            mc_results = monte_carlo_simulation(
+                base_value,
+                growth_rates['linear_regression']['free_cash_flow'],
+                growth_rates['volatility'].get('free_cash_flow', 0.1),
+                projection_years,
+                1000
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=proj_data['projected_years'],
+                    y=[v/1e3 for v in mc_results['p90']],
+                    name='90th Percentile',
+                    line=dict(color='pink', width=1, dash='dot'),
+                    mode='lines',
+                    showlegend=False,
+                    hovertemplate='P90: $%{y:.2f}B<extra></extra>'
+                ),
+                row=2, col=2
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=proj_data['projected_years'],
+                    y=[v/1e3 for v in mc_results['p10']],
+                    name='10th Percentile',
+                    line=dict(color='pink', width=1, dash='dot'),
+                    fill='tonexty',
+                    fillcolor='rgba(255, 192, 203, 0.2)',
+                    mode='lines',
+                    showlegend=False,
+                    hovertemplate='P10: $%{y:.2f}B<extra></extra>'
+                ),
+                row=2, col=2
+            )
     
     # Update axes labels
     fig.update_xaxes(title_text="Year", row=1, col=1)
@@ -1181,7 +1289,7 @@ def display_financial_projections(ticker, cached_info):
     st.plotly_chart(fig, width='stretch', config={'displayModeBar': True, 'displaylogo': False})
     
     if enable_monte_carlo:
-        st.caption("📊 **Chart includes Monte Carlo confidence intervals** (shaded blue area shows 10th-90th percentile range from 1000 simulations)")
+        st.caption("📊 **Charts include Monte Carlo confidence intervals** (shaded areas show 10th-90th percentile range from 1,000 simulations for Revenue, Net Income, EPS, and Free Cash Flow)")
     
     # Display TTM data comparison for 2025 projections
     if ttm_data and any(ttm_data.values()):
