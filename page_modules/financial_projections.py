@@ -392,8 +392,17 @@ def monte_carlo_simulation(base_value, mean_growth, volatility, years=5, simulat
     return percentiles
 
 
-def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projection_years=5, ticker=None, industry_context=None):
-    """Calculate DCF (Discounted Cash Flow) valuation with enhanced assumptions and transparency"""
+def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projection_years=5, ticker=None, industry_context=None, 
+                           fcf_growth_override=None, terminal_growth_override=None, wacc_adjustment=0.0, rf_override=None):
+    """
+    Calculate DCF (Discounted Cash Flow) valuation with enhanced assumptions and transparency
+    
+    Parameters:
+    - fcf_growth_override: Override FCF growth rate (decimal, e.g., 0.10 for 10%)
+    - terminal_growth_override: Override terminal growth rate (decimal)
+    - wacc_adjustment: Adjustment to WACC in decimal (e.g., 0.01 for +1%)
+    - rf_override: Override risk-free rate (decimal)
+    """
     try:
         # Get required inputs - FCF is in millions
         fcf_current = historical_data['free_cash_flow'][-1] if historical_data['free_cash_flow'] else 0
@@ -443,8 +452,8 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
             st.warning(f"⚠️ Beta of {beta:.2f} seems unusual. Using 1.0 for WACC calculation.")
             beta = 1.0
         
-        # Use current 10-year Treasury rate (update this periodically)
-        risk_free_rate = 0.045  # 4.5% US 10-year treasury (Oct 2025)
+        # Use current 10-year Treasury rate (update this periodically or override)
+        risk_free_rate = rf_override if rf_override is not None else 0.045  # 4.5% US 10-year treasury (Oct 2025)
         market_return = 0.10  # Historical market return ~10%
         equity_risk_premium = market_return - risk_free_rate
         
@@ -483,8 +492,17 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
         # Ensure WACC is reasonable
         wacc = max(0.06, min(0.18, wacc))  # Between 6% and 18%
         
+        # Apply WACC adjustment if provided
+        if wacc_adjustment != 0.0:
+            wacc = wacc + wacc_adjustment
+            wacc = max(0.06, min(0.18, wacc))  # Keep within reasonable bounds
+        
         # Project FCF with validated growth rate
-        fcf_growth_rate = growth_rates['linear_regression'].get('free_cash_flow', 0.08)
+        # Use override if provided, otherwise use linear regression
+        if fcf_growth_override is not None:
+            fcf_growth_rate = fcf_growth_override
+        else:
+            fcf_growth_rate = growth_rates['linear_regression'].get('free_cash_flow', 0.08)
         
         # Additional validation: FCF growth should be reasonable
         revenue_growth = growth_rates['linear_regression'].get('revenue', 0.08)
@@ -498,10 +516,16 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
         if industry_context:
             max_fcf_growth = industry_context.get('industry_growth_cap', 0.20)
         
-        fcf_growth_rate = max(-0.10, min(max_fcf_growth, fcf_growth_rate))
+        # Don't cap FCF growth if user explicitly overrode it
+        if fcf_growth_override is None:
+            fcf_growth_rate = max(-0.10, min(max_fcf_growth, fcf_growth_rate))
         
         # Terminal growth rate - should be GDP-like
-        terminal_growth_rate = 0.025  # 2.5% - long-term GDP growth
+        # Use override if provided
+        if terminal_growth_override is not None:
+            terminal_growth_rate = terminal_growth_override
+        else:
+            terminal_growth_rate = 0.025  # 2.5% - long-term GDP growth
         
         # Industry adjustments for terminal growth
         if industry_context:
@@ -538,6 +562,30 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
         # Get cash from stock_info - try multiple fields
         cash = 0
         cash_raw = stock_info.get('cash', stock_info.get('totalCash', 0))
+        
+        # If still zero, try to fetch fresh data from Yahoo Finance
+        if cash_raw == 0 and ticker:
+            try:
+                import yfinance as yf
+                stock = yf.Ticker(ticker)
+                fresh_info = stock.info
+                cash_raw = fresh_info.get('cash', fresh_info.get('totalCash', fresh_info.get('cashAndCashEquivalents', 0)))
+            except Exception as e:
+                st.warning(f"⚠️ Unable to fetch fresh cash data: {str(e)}")
+        
+        # If still zero, try from balance sheet (current assets)
+        if cash_raw == 0 and historical_data.get('current_assets'):
+            # Estimate cash as a portion of current assets (conservative estimate)
+            try:
+                current_assets = historical_data['current_assets'][-1] if historical_data['current_assets'] else 0
+                if current_assets > 0:
+                    # Typical cash ratio: 20-40% of current assets for tech companies
+                    cash_raw = current_assets * 0.25  # Conservative 25% estimate
+                    st.info(f"💡 Cash estimated from current assets (${cash_raw/1e3:.2f}B). Verify from balance sheet.")
+            except:
+                pass
+        
+        # Convert to millions
         if cash_raw > 1e6:  # If in dollars, convert to millions
             cash = cash_raw / 1e6
         else:  # Already in millions or zero
@@ -1146,13 +1194,176 @@ def display_financial_projections(ticker, cached_info):
     st.markdown("**Discounted Cash Flow Model** - Intrinsic value estimation based on projected free cash flows")
     st.info("📊 **Enhanced DCF Model**: Uses historical CapEx intensity, actual cost of debt from interest expense, industry-adjusted terminal growth, and includes sensitivity analysis")
     
+    # Advanced DCF Settings
+    with st.expander("⚙️ Advanced DCF Settings (Adjust assumptions to align with analyst consensus)", expanded=False):
+        st.markdown("### 🎯 Adjust Key Assumptions")
+        st.markdown("Use these controls to make your DCF more conservative or align with analyst assumptions.")
+        
+        # Conservative mode toggle
+        use_conservative = st.checkbox(
+            "Use Conservative Assumptions (Recommended for alignment with analysts)",
+            value=False,
+            help="Applies more conservative growth rates and higher discount rate to reduce terminal value weight"
+        )
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**📊 Growth Rates**")
+            
+            # FCF Growth Rate Override
+            fcf_growth_override = st.slider(
+                "FCF Growth Rate (%)",
+                min_value=0.0,
+                max_value=25.0,
+                value=10.0 if use_conservative else None,
+                step=0.5,
+                help="Override FCF growth rate. Analysts typically use 8-12% for mature tech companies. Set to match analyst assumptions.",
+                key="fcf_growth_override"
+            )
+            
+            # Terminal Growth Override
+            terminal_growth_override = st.slider(
+                "Terminal Growth Rate (%)",
+                min_value=1.0,
+                max_value=4.0,
+                value=2.0 if use_conservative else 2.5,
+                step=0.1,
+                help="Long-term perpetual growth rate. Conservative: 2.0-2.5%. GDP growth ~2.5%."
+            )
+        
+        with col2:
+            st.markdown("**💰 Discount Rate (WACC)**")
+            
+            wacc_adjustment = st.slider(
+                "WACC Adjustment (%)",
+                min_value=-2.0,
+                max_value=+3.0,
+                value=+1.0 if use_conservative else 0.0,
+                step=0.1,
+                help="Adjust WACC up (more conservative) or down. +1% makes valuation more conservative."
+            )
+            
+            # Risk-free rate override
+            rf_override = st.number_input(
+                "Risk-Free Rate (%)",
+                min_value=2.0,
+                max_value=7.0,
+                value=4.5,
+                step=0.1,
+                help="Current 10-year Treasury rate. Update based on market conditions."
+            )
+        
+        with col3:
+            st.markdown("**📈 Projection Period**")
+            
+            dcf_years_override = st.slider(
+                "DCF Projection Years",
+                min_value=3,
+                max_value=10,
+                value=5,
+                help="Longer period = less terminal value weight (more reliable)"
+            )
+            
+            st.markdown("**💡 Quick Presets:**")
+            if st.button("Conservative (Analyst-like)"):
+                fcf_growth_override = 10.0
+                wacc_adjustment = 1.0
+                terminal_growth_override = 2.0
+                st.info("Applied conservative preset")
+            
+            if st.button("Aggressive (Bull Case)"):
+                fcf_growth_override = 15.0
+                wacc_adjustment = 0.0
+                terminal_growth_override = 2.5
+                st.info("Applied aggressive preset")
+        
+        # Show impact
+        if fcf_growth_override or wacc_adjustment != 0:
+            st.markdown("---")
+            st.markdown("**📊 Adjustments Summary:**")
+            if fcf_growth_override:
+                st.info(f"✓ FCF Growth Rate: {fcf_growth_override}% (vs {growth_rates['linear_regression'].get('free_cash_flow', 0)*100:.1f}% linear regression)")
+            if wacc_adjustment != 0:
+                st.info(f"✓ WACC Adjustment: {wacc_adjustment:+.1f}% (will {'increase' if wacc_adjustment > 0 else 'decrease'} discount rate)")
+            if terminal_growth_override != 2.5:
+                st.info(f"✓ Terminal Growth: {terminal_growth_override}% (vs 2.5% default)")
+    
+    # Optional: Manual data override if Yahoo Finance data is missing
+    with st.expander("🔧 Manual Data Override (Optional - Use if Yahoo Finance data is incomplete)", expanded=False):
+        st.markdown("**Override Cash & Debt Values:**")
+        st.markdown("If Yahoo Finance doesn't have accurate data, you can manually input values from the company's latest balance sheet.")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            manual_cash = st.number_input(
+                "Cash & Cash Equivalents ($B)",
+                min_value=0.0,
+                max_value=1000.0,
+                value=0.0,
+                step=0.1,
+                help="Enter cash from Balance Sheet in billions (e.g., 15.5 for $15.5B). Leave at 0 to use Yahoo Finance data."
+            )
+        
+        with col2:
+            manual_debt = st.number_input(
+                "Total Debt ($B)",
+                min_value=0.0,
+                max_value=1000.0,
+                value=0.0,
+                step=0.1,
+                help="Enter total debt (short-term + long-term) from Balance Sheet in billions. Leave at 0 to use Yahoo Finance data."
+            )
+        
+        # Override cached_info with manual values if provided
+        if manual_cash > 0:
+            cached_info['cash'] = manual_cash * 1e3  # Convert to millions
+            st.success(f"✅ Using manual cash value: ${manual_cash:.2f}B")
+        
+        if manual_debt > 0:
+            cached_info['totalDebt'] = manual_debt * 1e3  # Convert to millions
+            st.success(f"✅ Using manual debt value: ${manual_debt:.2f}B")
+        
+        if manual_cash > 0 or manual_debt > 0:
+            st.info("💡 **Manual values will override Yahoo Finance data in the DCF calculation below.**")
+    
     # Get industry context for DCF
     industry_context = get_industry_context(ticker, cached_info)
     
+    # Prepare DCF parameters (convert from percentage to decimal if overrides exist)
+    dcf_params = {}
+    if 'fcf_growth_override' in locals() and fcf_growth_override is not None:
+        dcf_params['fcf_growth_override'] = fcf_growth_override / 100.0
+    if 'terminal_growth_override' in locals() and terminal_growth_override is not None:
+        dcf_params['terminal_growth_override'] = terminal_growth_override / 100.0
+    if 'wacc_adjustment' in locals():
+        dcf_params['wacc_adjustment'] = wacc_adjustment / 100.0
+    if 'rf_override' in locals() and rf_override is not None:
+        dcf_params['rf_override'] = rf_override / 100.0
+    if 'dcf_years_override' in locals() and dcf_years_override != 5:
+        projection_years = dcf_years_override
+    
     with st.spinner("Calculating DCF valuation..."):
-        dcf_results = calculate_dcf_valuation(historical_data, growth_rates, cached_info, projection_years, ticker, industry_context)
+        dcf_results = calculate_dcf_valuation(
+            historical_data, growth_rates, cached_info, projection_years, ticker, industry_context,
+            **dcf_params
+        )
     
     if dcf_results:
+        # Check for significant divergence from analyst consensus
+        analyst_target = cached_info.get('targetMeanPrice', 0)
+        if analyst_target > 0:
+            dcf_vs_analyst_diff = ((dcf_results['fair_value_per_share'] - analyst_target) / analyst_target) * 100
+            
+            if abs(dcf_vs_analyst_diff) > 20:
+                st.warning(f"""
+                ⚠️ **Your DCF valuation (${dcf_results['fair_value_per_share']:.2f}) differs significantly from analyst consensus (${analyst_target:.2f}) by {abs(dcf_vs_analyst_diff):.1f}%**
+                
+                This suggests your assumptions may be too {'aggressive' if dcf_vs_analyst_diff > 0 else 'conservative'}. 
+                Use the "⚙️ Advanced DCF Settings" above to adjust growth rates, WACC, or enable Conservative mode for more reasonable valuations.
+                """)
+        
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -1234,9 +1445,15 @@ def display_financial_projections(ticker, cached_info):
                 - **Shares Outstanding**: {shares_m:.0f}M
                 """)
                 
-                # Add data validation warnings
+                # Add data validation warnings with actionable guidance
                 if cash_val == 0:
                     st.warning("⚠️ **Cash is $0**: This may indicate missing data from Yahoo Finance. Please verify actual cash position from company financials.")
+                    st.markdown("""
+                    **How to verify:**
+                    1. Check the company's latest 10-Q or 10-K filing on [SEC.gov](https://www.sec.gov/edgar)
+                    2. Look for "Cash and Cash Equivalents" on the Balance Sheet
+                    3. If data is available, the DCF model will automatically update when Yahoo Finance refreshes
+                    """)
                 if debt_val == 0:
                     st.warning("⚠️ **Debt is $0**: This may indicate missing data or the company is debt-free. Please verify from company balance sheet.")
                 if dcf_results.get('beta', 1.0) == 1.0:
@@ -1342,6 +1559,152 @@ def display_financial_projections(ticker, cached_info):
             st.plotly_chart(fig_dcf, width='stretch', config={'displayModeBar': True, 'displaylogo': False})
             
             st.caption("**DCF Interpretation:** The DCF model estimates intrinsic value by discounting all future free cash flows to present value. A positive upside suggests the stock may be undervalued.")
+            
+            # Add recommendations for alignment
+            st.markdown("---")
+            st.markdown("#### 💡 Making Your Model More Reasonable")
+            
+            # Get analyst target for comparison
+            analyst_target = cached_info.get('targetMeanPrice', 0)
+            if analyst_target > 0:
+                dcf_vs_analyst_diff = ((dcf_results['fair_value_per_share'] - analyst_target) / analyst_target) * 100
+                
+                if abs(dcf_vs_analyst_diff) > 20:
+                    st.warning(f"⚠️ **Your DCF is {abs(dcf_vs_analyst_diff):.1f}% {'higher' if dcf_vs_analyst_diff > 0 else 'lower'} than analyst consensus (${analyst_target:.2f})**")
+                    
+                    st.markdown("**Common reasons for divergence:**")
+                    
+                    if dcf_vs_analyst_diff > 20:
+                        st.markdown("""
+                        1. **FCF Growth Too Aggressive**: Your model uses {:.1f}% growth. Analysts typically use 8-12% for mature tech.
+                           - ✅ **Fix**: Use "Advanced DCF Settings" above to reduce FCF growth to ~10%
+                        
+                        2. **WACC Too Low**: Lower discount rates inflate valuations.
+                           - ✅ **Fix**: Add +1% to WACC using the adjustment slider
+                        
+                        3. **Terminal Value Weight**: Terminal value is {:.1f}% of enterprise value (should be <75%)
+                           - ✅ **Fix**: Increase projection years to 7-10 years to reduce terminal value weight
+                        
+                        4. **Terminal Growth**: Using {:.1f}% might be too high for mature companies
+                           - ✅ **Fix**: Reduce terminal growth to 2.0%
+                        """.format(
+                            dcf_results['fcf_growth_rate']*100,
+                            (dcf_results['pv_terminal_value'] / dcf_results['enterprise_value']) * 100,
+                            dcf_results['terminal_growth_rate']*100
+                        ))
+                        
+                        st.info("💡 **Quick Fix**: Enable 'Conservative Assumptions' in Advanced DCF Settings above for analyst-aligned valuation")
+                    
+                    else:
+                        st.markdown("""
+                        1. **FCF Growth Too Conservative**: Your model might be underestimating growth potential
+                        2. **WACC Too High**: Higher discount rates penalize future cash flows
+                        3. **Missing Growth Catalysts**: Analysts may factor in new products/markets
+                        """)
+                
+                else:
+                    st.success(f"✅ **Your DCF is well-aligned with analyst consensus** (within {abs(dcf_vs_analyst_diff):.1f}%)")
+            
+            # Show what reasonable ranges look like
+            st.markdown("---")
+            st.markdown("**📊 Reasonable Assumption Ranges:**")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown("""
+                **FCF Growth:**
+                - Mature Tech: 8-12%
+                - High Growth: 12-18%
+                - Your Model: {:.1f}%
+                """.format(dcf_results['fcf_growth_rate']*100))
+            
+            with col2:
+                st.markdown("""
+                **WACC:**
+                - Low Risk: 7-9%
+                - Medium Risk: 9-11%
+                - High Risk: 11-14%
+                - Your Model: {:.2f}%
+                """.format(dcf_results['wacc']*100))
+            
+            with col3:
+                st.markdown("""
+                **Terminal Growth:**
+                - Conservative: 2.0%
+                - GDP-like: 2.5%
+                - Optimistic: 3.0%
+                - Your Model: {:.1f}%
+                """.format(dcf_results['terminal_growth_rate']*100))
+            
+            # Add data diagnostics section
+            with st.expander("🔍 Data Source Diagnostics (Click to see raw data from Yahoo Finance)", expanded=False):
+                st.markdown("**📊 Raw Data Retrieved from Yahoo Finance:**")
+                st.markdown("This shows what data is actually available for this ticker. Use this to diagnose missing values.")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Balance Sheet Data:**")
+                    cash_fields = {
+                        'cash': cached_info.get('cash', 'Not Available'),
+                        'totalCash': cached_info.get('totalCash', 'Not Available'),
+                        'cashAndCashEquivalents': cached_info.get('cashAndCashEquivalents', 'Not Available'),
+                        'totalDebt': cached_info.get('totalDebt', 'Not Available'),
+                        'shortLongTermDebt': cached_info.get('shortLongTermDebt', 'Not Available'),
+                        'longTermDebt': cached_info.get('longTermDebt', 'Not Available')
+                    }
+                    
+                    for field, value in cash_fields.items():
+                        if value == 'Not Available' or value == 0 or value is None:
+                            st.markdown(f"- ❌ **{field}**: {value}")
+                        else:
+                            display_val = f"${value/1e9:.2f}B" if isinstance(value, (int, float)) and value > 1e6 else value
+                            st.markdown(f"- ✅ **{field}**: {display_val}")
+                
+                with col2:
+                    st.markdown("**Market Data:**")
+                    market_fields = {
+                        'beta': cached_info.get('beta', 'Not Available'),
+                        'sharesOutstanding': cached_info.get('sharesOutstanding', 'Not Available'),
+                        'currentPrice': cached_info.get('currentPrice', 'Not Available'),
+                        'marketCap': cached_info.get('marketCap', 'Not Available'),
+                        'forwardPE': cached_info.get('forwardPE', 'Not Available'),
+                        'pegRatio': cached_info.get('pegRatio', 'Not Available')
+                    }
+                    
+                    for field, value in market_fields.items():
+                        if value == 'Not Available' or value == 0 or value is None:
+                            st.markdown(f"- ❌ **{field}**: {value}")
+                        else:
+                            if field == 'sharesOutstanding':
+                                display_val = f"{value/1e6:.0f}M shares"
+                            elif field == 'marketCap':
+                                display_val = f"${value/1e9:.2f}B"
+                            elif isinstance(value, (int, float)):
+                                display_val = f"{value:.2f}"
+                            else:
+                                display_val = value
+                            st.markdown(f"- ✅ **{field}**: {display_val}")
+                
+                st.markdown("---")
+                st.markdown("**💡 Troubleshooting Tips:**")
+                st.markdown("""
+                - **❌ (Not Available)**: Field not provided by Yahoo Finance for this ticker
+                - **0 or None**: Data exists but is zero or null
+                - **✅ (with value)**: Data successfully retrieved
+                
+                **If cash/debt is missing:**
+                1. Yahoo Finance may not have complete data for this ticker
+                2. Try checking the company's investor relations website
+                3. Look up the latest 10-Q/10-K filing on [SEC.gov](https://www.sec.gov/edgar)
+                4. Some tickers (especially non-US) may have limited data
+                
+                **Alternative approach:**
+                - Use the company's latest Balance Sheet to manually verify:
+                  - Cash and Cash Equivalents
+                  - Total Debt (Short-term + Long-term)
+                  - Shares Outstanding (Diluted)
+                """)
     else:
         st.info("📊 DCF valuation requires positive free cash flow data. Ensure FCF metrics are available.")
     
