@@ -875,8 +875,8 @@ def display_financial_projections(ticker, cached_info):
         - **Monte Carlo Simulation**: Probabilistic simulation considering historical volatility to provide confidence intervals (10th-90th percentile)
         """)
     
-    # Fetch comprehensive historical data from 2020
-    with st.spinner("📊 Loading comprehensive historical data (2020-2024) and analyzing trends..."):
+    # Fetch comprehensive historical data
+    with st.spinner("📊 Loading comprehensive historical data and analyzing trends..."):
         historical_data, growth_rates = calculate_historical_growth_rates(ticker, use_local_data=True)
     
     if historical_data is None or growth_rates is None:
@@ -982,14 +982,15 @@ def display_financial_projections(ticker, cached_info):
     projections = project_financials_linear_regression(historical_data, growth_rates, projection_years)
     
     base_year = historical_data['years'][-1]
+    first_year_data = historical_data['years'][0]
     
-    # Create comprehensive projection charts with full historical data (2020-present)
-    st.markdown("#### 📊 Historical Data (2020-2024) + Projections")
+    # Create comprehensive projection charts with full historical data
+    st.markdown(f"#### 📊 Historical Data ({first_year_data}-{base_year}) + Projections")
     
     fig = make_subplots(
         rows=2, cols=2,
         subplot_titles=(
-            f'Revenue: Historical (2020-{base_year}) + Projected ({base_year+1}-{base_year+projection_years})',
+            f'Revenue: Historical ({first_year_data}-{base_year}) + Projected ({base_year+1}-{base_year+projection_years})',
             f'Net Income: Historical + Projected',
             f'EPS: Historical + Projected',
             f'Free Cash Flow: Historical + Projected'
@@ -1003,7 +1004,7 @@ def display_financial_projections(ticker, cached_info):
     # Revenue projection with full historical context
     if 'revenue' in projections:
         proj_data = projections['revenue']
-        # Historical data from 2020
+        # Historical data
         fig.add_trace(
             go.Scatter(
                 x=proj_data['historical_years'],
@@ -1172,7 +1173,7 @@ def display_financial_projections(ticker, cached_info):
         showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=-0.12, xanchor="center", x=0.5),
         template='plotly_white',
-        title_text=f"{ticker} Comprehensive Financial Projections | Historical (2020-{base_year}) + Forecast ({base_year+1}-{base_year+projection_years})",
+        title_text=f"{ticker} Comprehensive Financial Projections | Historical ({first_year_data}-{base_year}) + Forecast ({base_year+1}-{base_year+projection_years})",
         title_x=0.5,
         title_font=dict(size=16)
     )
@@ -1659,6 +1660,12 @@ def display_financial_projections(ticker, cached_info):
             final_eps = projections['eps']['projected_values'][-1] if 'eps' in projections else 0
             final_fcf = projections['free_cash_flow']['projected_values'][-1]/1e3 if 'free_cash_flow' in projections else 0
             
+            # Get first and last year historical values for accurate context
+            first_year_data = historical_data['years'][0] if historical_data['years'] else 2020
+            last_year_data = historical_data['years'][-1] if historical_data['years'] else base_year
+            first_revenue = historical_data['revenue'][0]/1e3 if historical_data['revenue'] else 0
+            last_revenue = historical_data['revenue'][-1]/1e3 if historical_data['revenue'] else 0
+            
             # Calculate 2025 projections for TTM comparison
             proj_2025_revenue = projections['revenue']['projected_values'][0]/1e3 if 'revenue' in projections and len(projections['revenue']['projected_values']) > 0 else None
             proj_2025_ni = projections['net_income']['projected_values'][0]/1e3 if 'net_income' in projections and len(projections['net_income']['projected_values']) > 0 else None
@@ -1697,7 +1704,7 @@ def display_financial_projections(ticker, cached_info):
             projection_summary = f"""
 **Comprehensive Financial Projection Analysis for {ticker}:**
 
-**Historical Performance (2020-{base_year}):**
+**Historical Performance ({first_year_data}-{last_year_data}):**
 - Revenue Growth (Linear Regression): {growth_rates['linear_regression'].get('revenue', 0)*100:.2f}%
 - Net Income Growth (Linear Regression): {growth_rates['linear_regression'].get('net_income', 0)*100:.2f}%
 - EPS Growth (Linear Regression): {growth_rates['linear_regression'].get('eps', 0)*100:.2f}%
@@ -1766,16 +1773,16 @@ def display_financial_projections(ticker, cached_info):
 
 **Analysis Framework:**
 This analysis uses linear regression with Monte Carlo simulation:
-1. **Historical Growth Analysis (2020-{base_year})**: 5-year trend analysis using linear regression
+1. **Historical Growth Analysis ({first_year_data}-{last_year_data})**: Multi-year trend analysis using linear regression
 2. **Linear Regression Projections**: Statistical trend line fitted to historical data
 3. **DCF Valuation**: Intrinsic value based on discounted free cash flows
 4. **Monte Carlo Simulation**: 1,000 probabilistic scenarios providing confidence intervals (10th-90th percentile)
 
 **Visual Context:**
 The comprehensive dashboard displays:
-1. **Revenue Chart**: Full historical trend (2020-{base_year}) + {projection_years}-year projections with Monte Carlo confidence intervals
+1. **Revenue Chart**: Full historical trend ({first_year_data}-{last_year_data}) + {projection_years}-year projections with Monte Carlo confidence intervals
 2. **Net Income Chart**: Historical profitability trajectory + future projections
-3. **EPS Chart**: Earnings per share path from 2020 through {final_year}
+3. **EPS Chart**: Earnings per share path from {first_year_data} through {final_year}
 4. **Free Cash Flow Chart**: Historical FCF generation + projected cash flows (used in DCF)
 
 **Your Task:**
@@ -1783,7 +1790,7 @@ Provide an advanced, comprehensive financial projection and valuation analysis (
 
 Write as a cohesive equity research narrative that:
 
-1. **Opens with Historical Foundation & Trend Analysis**: Begin by analyzing the 5-year historical performance (2020-{base_year}), discussing the **{growth_rates['linear_regression'].get('revenue', 0)*100:.2f}% annual revenue growth rate** derived from linear regression analysis and **{growth_rates['volatility'].get('revenue', 0)*100:.2f}% volatility**. Establish whether these trends are sustainable and how the company's performance has evolved. Reference the complete historical data shown in all four charts showing the trajectory from approximately **$30B in 2020** to **$50.2B in 2024**.
+1. **Opens with Historical Foundation & Trend Analysis**: Begin by analyzing the historical performance ({first_year_data}-{last_year_data}), discussing the **{growth_rates['linear_regression'].get('revenue', 0)*100:.2f}% annual revenue growth rate** derived from linear regression analysis and **{growth_rates['volatility'].get('revenue', 0)*100:.2f}% volatility**. Establish whether these trends are sustainable and how the company's performance has evolved. Reference the complete historical data shown in all four charts showing the trajectory from approximately **${first_revenue:.1f}B in {first_year_data}** to **${last_revenue:.1f}B in {last_year_data}**.
 
 2. **Evaluates Linear Regression Methodology**: Explain why linear regression is the appropriate statistical methodology for {ticker}'s projections (NOT CAGR or compound growth). Discuss how the fitted trend line captures the long-term growth trajectory with a **{growth_rates['linear_regression'].get('revenue', 0)*100:.2f}% annual growth rate** and why this is more suitable than other methods given the company's stable growth pattern.
 
@@ -1800,14 +1807,15 @@ Write as a cohesive equity research narrative that:
 **Formatting Requirements:**
 - Write in flowing paragraphs (7 paragraphs total), NOT bullet points or multiple heading sections
 - DO NOT use multiple heading levels (###) within your response - write as continuous prose
-- Bold all key figures, growth rates, and metrics: **$50.2B revenue**, **10.53% annual growth**, **$182.06 fair value**
+- Bold all key figures, growth rates, and metrics: **${last_revenue:.1f}B revenue in {last_year_data}**, **${final_revenue:.1f}B projected for {final_year}**, **{growth_rates['linear_regression'].get('revenue', 0)*100:.2f}% annual growth**, **${dcf_results.get('fair_value_per_share', 0):.2f} fair value**
 - Use smooth transitions between paragraphs to maintain narrative flow
 - Write in an engaging, professional tone as if writing a comprehensive equity research report
 - Focus MORE on DCF valuation process and methodology
 - Always refer to LINEAR REGRESSION annual growth rates, never CAGR
+- Be CLEAR about what is historical data ({first_year_data}-{last_year_data}) vs. what is projected ({last_year_data+1}-{final_year})
 - Mention that analyst targets are from Yahoo Finance/yfinance
 
-Be highly specific, cite actual numbers from all projections/metrics/DCF, reference all four projection charts showing 2020-{final_year} data naturally within the narrative, integrate the linear regression methodology and Monte Carlo uncertainty analysis, and provide balanced, sophisticated analysis that a professional analyst would produce."""
+Be highly specific, cite actual numbers from all projections/metrics/DCF, reference all four projection charts showing {first_year_data}-{final_year} data naturally within the narrative, integrate the linear regression methodology and Monte Carlo uncertainty analysis, and provide balanced, sophisticated analysis that a professional analyst would produce."""
             
             try:
                 # Generate AI insight using OpenAI
