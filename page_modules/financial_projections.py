@@ -1,6 +1,6 @@
 """
 Financial Projections Page Module
-Advanced financial projections with multiple methodologies, DCF valuation, and scenario analysis
+Advanced financial projections using linear regression with Monte Carlo simulation and DCF valuation
 """
 
 import streamlit as st
@@ -262,29 +262,25 @@ def validate_growth_rates(growth_rates, historical_data, industry_context):
             reasonable_cap = min(reasonable_cap, 0.05)  # Cap at 5% if declining
             st.warning("⚠️ Recent revenue decline detected - projections capped at 5% growth")
     
-    # Validate each methodology
-    for method in ['cagr', 'simple_average', 'weighted_average', 'linear_regression']:
-        if method in validated_rates:
-            for metric in validated_rates[method]:
-                original_rate = validated_rates[method][metric]
-                
-                # Apply caps
-                adjusted_rate = max(reasonable_floor, min(reasonable_cap, original_rate))
-                
-                # If we had to adjust significantly, note it
-                if abs(adjusted_rate - original_rate) > 0.05:  # More than 5% difference
-                    validated_rates[method][metric] = adjusted_rate
+    # Validate linear regression method
+    if 'linear_regression' in validated_rates:
+        for metric in validated_rates['linear_regression']:
+            original_rate = validated_rates['linear_regression'][metric]
+            
+            # Apply caps
+            adjusted_rate = max(reasonable_floor, min(reasonable_cap, original_rate))
+            
+            # If we had to adjust significantly, note it
+            if abs(adjusted_rate - original_rate) > 0.05:  # More than 5% difference
+                validated_rates['linear_regression'][metric] = adjusted_rate
     
     return validated_rates
 
 
 def calculate_growth_metrics(historical_data):
-    """Calculate comprehensive growth metrics using multiple methodologies"""
+    """Calculate growth metrics using linear regression methodology"""
     growth_rates = {
-        'simple_average': {},
-        'cagr': {},
         'linear_regression': {},
-        'weighted_average': {},
         'volatility': {}
     }
     
@@ -306,37 +302,29 @@ def calculate_growth_metrics(historical_data):
             if len(values) < 2:
                 continue
             
-            # 1. Simple Average Growth Rate
+            # Calculate percentage changes for volatility
             pct_changes = np.diff(values) / values[:-1]
-            growth_rates['simple_average'][metric] = np.mean(pct_changes)
             
-            # 2. CAGR (Compound Annual Growth Rate)
-            n_years = len(values) - 1
-            cagr = (values[-1] / values[0]) ** (1/n_years) - 1
-            growth_rates['cagr'][metric] = cagr
-            
-            # 3. Linear Regression Growth Rate
+            # Linear Regression Growth Rate
             try:
                 slope, intercept, r_value, p_value, std_err = stats.linregress(years, values)
                 avg_value = np.mean(values)
                 regression_growth = slope / avg_value if avg_value != 0 else 0
                 growth_rates['linear_regression'][metric] = regression_growth
             except:
-                growth_rates['linear_regression'][metric] = growth_rates['cagr'][metric]
+                # Fallback to simple CAGR if regression fails
+                n_years = len(values) - 1
+                cagr = (values[-1] / values[0]) ** (1/n_years) - 1
+                growth_rates['linear_regression'][metric] = cagr
             
-            # 4. Weighted Average (more weight to recent years)
-            weights = np.linspace(0.5, 1.5, len(pct_changes))
-            weighted_growth = np.average(pct_changes, weights=weights)
-            growth_rates['weighted_average'][metric] = weighted_growth
-            
-            # 5. Volatility (Standard Deviation of growth rates)
+            # Volatility (Standard Deviation of growth rates)
             growth_rates['volatility'][metric] = np.std(pct_changes)
     
     return growth_rates
 
 
-def project_financials_multi_method(historical_data, growth_rates, years=5, method='cagr'):
-    """Project financial statements using specified methodology"""
+def project_financials_linear_regression(historical_data, growth_rates, years=5):
+    """Project financial statements using linear regression methodology"""
     projections = {}
     base_year = historical_data['years'][-1]
     
@@ -350,8 +338,8 @@ def project_financials_multi_method(historical_data, growth_rates, years=5, meth
         'operating_cf': historical_data['operating_cf'][-1] if historical_data['operating_cf'] else 0
     }
     
-    # Select growth rate method
-    selected_growth = growth_rates.get(method, growth_rates.get('cagr', {}))
+    # Use linear regression growth rates
+    selected_growth = growth_rates.get('linear_regression', {})
     
     for metric, base_value in base_values.items():
         if base_value and metric in selected_growth:
@@ -482,10 +470,10 @@ def calculate_dcf_valuation(historical_data, growth_rates, stock_info, projectio
         wacc = max(0.06, min(0.18, wacc))  # Between 6% and 18%
         
         # Project FCF with validated growth rate
-        fcf_growth_rate = growth_rates['cagr'].get('free_cash_flow', 0.08)
+        fcf_growth_rate = growth_rates['linear_regression'].get('free_cash_flow', 0.08)
         
         # Additional validation: FCF growth should be reasonable
-        revenue_growth = growth_rates['cagr'].get('revenue', 0.08)
+        revenue_growth = growth_rates['linear_regression'].get('revenue', 0.08)
         # FCF growth shouldn't wildly exceed revenue growth without good reason
         if fcf_growth_rate > revenue_growth * 1.5:
             fcf_growth_rate = revenue_growth * 1.2  # Allow 20% premium max
@@ -649,44 +637,7 @@ def calculate_dcf_sensitivity(projected_fcf, terminal_fcf, base_wacc, base_termi
     return sensitivity
 
 
-def create_scenario_projections(historical_data, growth_rates, years=5):
-    """Create Bull, Base, and Bear scenario projections"""
-    scenarios = {}
-    
-    base_year = historical_data['years'][-1]
-    
-    metrics = ['revenue', 'net_income', 'eps', 'free_cash_flow']
-    
-    for metric in metrics:
-        if metric not in growth_rates['cagr']:
-            continue
-            
-        base_value = historical_data[metric][-1] if historical_data[metric] else 0
-        base_growth = growth_rates['cagr'][metric]
-        volatility = growth_rates['volatility'].get(metric, 0.1)
-        
-        # Bull case: higher growth (base + 1 std dev)
-        bull_growth = base_growth + volatility
-        
-        # Base case: CAGR
-        base_case_growth = base_growth
-        
-        # Bear case: lower growth (base - 1 std dev)
-        bear_growth = base_growth - volatility
-        
-        scenarios[metric] = {
-            'bull': {'growth_rate': bull_growth, 'values': []},
-            'base': {'growth_rate': base_case_growth, 'values': []},
-            'bear': {'growth_rate': bear_growth, 'values': []}
-        }
-        
-        # Project each scenario
-        for scenario_name, scenario_data in scenarios[metric].items():
-            for year in range(1, years + 1):
-                value = base_value * ((1 + scenario_data['growth_rate']) ** year)
-                scenario_data['values'].append(value)
-    
-    return scenarios
+
 
 
 def get_analyst_estimates(ticker):
@@ -728,8 +679,8 @@ def display_financial_projections(ticker, cached_info):
         cached_info = {}
     
     # Advanced settings in expandable section
-    with st.expander("⚙️ Projection Settings & Methodologies", expanded=False):
-        col1, col2, col3 = st.columns(3)
+    with st.expander("⚙️ Projection Settings", expanded=False):
+        col1, col2 = st.columns(2)
         
         with col1:
             projection_years = st.slider(
@@ -741,32 +692,16 @@ def display_financial_projections(ticker, cached_info):
             )
         
         with col2:
-            projection_method = st.selectbox(
-                "Primary Projection Method",
-                options=['cagr', 'weighted_average', 'linear_regression', 'simple_average'],
-                format_func=lambda x: {
-                    'cagr': '📈 CAGR (Compound Annual Growth)',
-                    'weighted_average': '⚖️ Weighted Average (Recent Focus)',
-                    'linear_regression': '📊 Linear Regression',
-                    'simple_average': '➗ Simple Average'
-                }[x],
-                help="Select the methodology for financial projections"
-            )
-        
-        with col3:
             enable_monte_carlo = st.checkbox(
                 "Enable Monte Carlo Simulation",
                 value=True,
                 help="Run probabilistic simulations with confidence intervals"
             )
         
-        st.markdown("**Methodology Descriptions:**")
+        st.markdown("**Methodology:**")
         st.markdown("""
-        - **CAGR**: Compound Annual Growth Rate - smooths volatility, ideal for consistent growth
-        - **Weighted Average**: Gives more weight to recent years - best for trend changes
-        - **Linear Regression**: Statistical trend line - captures long-term trajectory
-        - **Simple Average**: Equal weight to all years - baseline comparison
-        - **Monte Carlo**: Probabilistic simulation considering volatility - provides confidence intervals
+        - **Linear Regression**: Statistical trend line that captures long-term growth trajectory from historical data
+        - **Monte Carlo Simulation**: Probabilistic simulation considering historical volatility to provide confidence intervals (10th-90th percentile)
         """)
     
     # Fetch comprehensive historical data from 2020
@@ -791,65 +726,62 @@ def display_financial_projections(ticker, cached_info):
     with col1:
         if historical_data['revenue']:
             latest_revenue = historical_data['revenue'][-1]
-            revenue_cagr = growth_rates['cagr'].get('revenue', 0) * 100
+            revenue_growth = growth_rates['linear_regression'].get('revenue', 0) * 100
             st.metric(
                 f"Revenue ({most_recent_year})",
                 f"${latest_revenue/1e3:.2f}B",
-                f"{revenue_cagr:.1f}% CAGR (Historical)"
+                f"{revenue_growth:.1f}% Growth Rate"
             )
     
     with col2:
         if historical_data['net_income']:
             latest_net_income = historical_data['net_income'][-1]
-            ni_cagr = growth_rates['cagr'].get('net_income', 0) * 100
+            ni_growth = growth_rates['linear_regression'].get('net_income', 0) * 100
             st.metric(
                 f"Net Income ({most_recent_year})",
                 f"${latest_net_income/1e3:.2f}B",
-                f"{ni_cagr:.1f}% CAGR (Historical)"
+                f"{ni_growth:.1f}% Growth Rate"
             )
     
     with col3:
         if historical_data['eps']:
             latest_eps = historical_data['eps'][-1]
-            eps_cagr = growth_rates['cagr'].get('eps', 0) * 100
+            eps_growth = growth_rates['linear_regression'].get('eps', 0) * 100
             st.metric(
                 f"EPS ({most_recent_year})",
                 f"${latest_eps:.2f}",
-                f"{eps_cagr:.1f}% CAGR (Historical)"
+                f"{eps_growth:.1f}% Growth Rate"
             )
     
     with col4:
         if historical_data['free_cash_flow']:
             latest_fcf = historical_data['free_cash_flow'][-1]
-            fcf_cagr = growth_rates['cagr'].get('free_cash_flow', 0) * 100
+            fcf_growth = growth_rates['linear_regression'].get('free_cash_flow', 0) * 100
             st.metric(
                 f"Free Cash Flow ({most_recent_year})",
                 f"${latest_fcf/1e3:.2f}B",
-                f"{fcf_cagr:.1f}% CAGR (Historical)"
+                f"{fcf_growth:.1f}% Growth Rate"
             )
     
-    st.caption(f"📅 Historical Data: 2020-{most_recent_year} | Data Source: Company Financials | Note: Metrics show historical CAGR - Projections below use **{projection_method.upper().replace('_', ' ')}** method")
+    st.caption(f"📅 Historical Data: 2020-{most_recent_year} | Data Source: Company Financials | Note: Growth rates calculated using **Linear Regression** method")
     
-    # Display comprehensive growth rates comparison
+    # Display growth rates from linear regression
     st.markdown("---")
-    st.markdown("### 📊 Growth Rate Analysis - Multiple Methodologies")
-    st.markdown("Comparative growth rates using different calculation methods (2020-2024)")
+    st.markdown("### 📊 Growth Rate Analysis - Linear Regression")
+    st.markdown("Growth rates calculated using linear regression on historical data (2020-2024)")
     
-    # Create comprehensive growth rate comparison table
+    # Create growth rate table
     growth_comparison_data = []
     metrics = ['revenue', 'net_income', 'operating_income', 'eps', 'free_cash_flow']
     metric_names = ['Revenue', 'Net Income', 'Operating Income', 'EPS', 'Free Cash Flow']
     
     for metric, name in zip(metrics, metric_names):
-        if metric in growth_rates['cagr']:
+        if metric in growth_rates['linear_regression']:
             growth_comparison_data.append({
                 'Metric': name,
-                'CAGR': f"{growth_rates['cagr'].get(metric, 0)*100:.2f}%",
-                'Simple Avg': f"{growth_rates['simple_average'].get(metric, 0)*100:.2f}%",
-                'Weighted Avg': f"{growth_rates['weighted_average'].get(metric, 0)*100:.2f}%",
-                'Linear Reg': f"{growth_rates['linear_regression'].get(metric, 0)*100:.2f}%",
+                'Growth Rate': f"{growth_rates['linear_regression'].get(metric, 0)*100:.2f}%",
                 'Volatility': f"{growth_rates['volatility'].get(metric, 0)*100:.2f}%",
-                'Trend': '📈 Growing' if growth_rates['cagr'].get(metric, 0) > 0 else '📉 Declining'
+                'Trend': '📈 Growing' if growth_rates['linear_regression'].get(metric, 0) > 0 else '📉 Declining'
             })
     
     if growth_comparison_data:
@@ -857,27 +789,23 @@ def display_financial_projections(ticker, cached_info):
         st.dataframe(growth_df, width='stretch', hide_index=True)
         
         st.caption("""
-        **Methodology Comparison:** CAGR = Compound Annual Growth | Simple Avg = Arithmetic mean | 
-        Weighted Avg = Recent years weighted higher | Linear Reg = Statistical trend | 
-        Volatility = Standard deviation of growth rates
+        **Linear Regression:** Statistical trend line fitted to historical data | 
+        **Volatility:** Standard deviation of year-over-year growth rates
         """)
     
-    # Generate projections using selected method
+    # Generate projections using linear regression
     st.markdown("---")
     st.markdown(f"### 🔮 Financial Projections ({projection_years}-Year Forecast)")
-    st.markdown(f"**Method:** {projection_method.upper().replace('_', ' ')} | **Period:** 2020-{historical_data['years'][-1] + projection_years}")
+    st.markdown(f"**Method:** Linear Regression with Monte Carlo Simulation | **Period:** 2020-{historical_data['years'][-1] + projection_years}")
     
     # Show the actual growth rates being used for projections
-    if projection_method in growth_rates and 'revenue' in growth_rates[projection_method]:
-        proj_revenue_growth = growth_rates[projection_method].get('revenue', 0) * 100
-        proj_ni_growth = growth_rates[projection_method].get('net_income', 0) * 100
-        proj_eps_growth = growth_rates[projection_method].get('eps', 0) * 100
-        st.info(f"📊 **Using {projection_method.upper().replace('_', ' ')} Growth Rates:** Revenue: {proj_revenue_growth:.1f}% | Net Income: {proj_ni_growth:.1f}% | EPS: {proj_eps_growth:.1f}%")
+    if 'revenue' in growth_rates['linear_regression']:
+        proj_revenue_growth = growth_rates['linear_regression'].get('revenue', 0) * 100
+        proj_ni_growth = growth_rates['linear_regression'].get('net_income', 0) * 100
+        proj_eps_growth = growth_rates['linear_regression'].get('eps', 0) * 100
+        st.info(f"📊 **Linear Regression Growth Rates:** Revenue: {proj_revenue_growth:.1f}% | Net Income: {proj_ni_growth:.1f}% | EPS: {proj_eps_growth:.1f}%")
     
-    projections = project_financials_multi_method(historical_data, growth_rates, projection_years, projection_method)
-    
-    # Generate scenarios (Bull/Base/Bear)
-    scenarios = create_scenario_projections(historical_data, growth_rates, projection_years)
+    projections = project_financials_linear_regression(historical_data, growth_rates, projection_years)
     
     base_year = historical_data['years'][-1]
     
@@ -928,11 +856,11 @@ def display_financial_projections(ticker, cached_info):
             row=1, col=1
         )
         # Add Monte Carlo confidence interval if enabled
-        if enable_monte_carlo and 'revenue' in growth_rates['cagr']:
+        if enable_monte_carlo and 'revenue' in growth_rates['linear_regression']:
             base_value = proj_data['historical_values'][-1]
             mc_results = monte_carlo_simulation(
                 base_value,
-                growth_rates[projection_method]['revenue'],
+                growth_rates['linear_regression']['revenue'],
                 growth_rates['volatility'].get('revenue', 0.1),
                 projection_years,
                 1000
@@ -1085,17 +1013,16 @@ def display_financial_projections(ticker, cached_info):
         st.markdown("""
         #### Projection Methodology
         
-        Our projections use multiple validated approaches:
+        Our projections use a validated linear regression approach:
         
         1. **Historical Analysis (2020-2024)**: 5-year trend analysis across all key financial metrics
-        2. **Growth Rate Validation**: All growth rates are capped at industry-reasonable levels based on:
+        2. **Linear Regression**: Statistical trend line fitted to historical data to determine growth trajectory
+        3. **Growth Rate Validation**: All growth rates are capped at industry-reasonable levels based on:
            - Company size and maturity (market cap-based)
            - Industry/sector growth caps
            - Historical volatility
            - Recent trends (declining companies get conservative caps)
-        3. **Multiple Methodologies**: CAGR, weighted average (recent focus), linear regression, simple average
-        4. **Scenario Analysis**: Bull/Base/Bear cases using ±1 standard deviation from base growth
-        5. **Monte Carlo Simulation**: 1,000 probabilistic scenarios incorporating historical volatility
+        4. **Monte Carlo Simulation**: 1,000 probabilistic scenarios incorporating historical volatility to provide confidence intervals (10th-90th percentile)
         
         #### Key Limitations & Risk Factors
         
@@ -1139,71 +1066,43 @@ def display_financial_projections(ticker, cached_info):
         - Scenario planning
         """)
     
-    # Display comprehensive projection table with scenarios
+    # Display projection table
     st.markdown("---")
-    st.markdown("### 📋 Detailed Projections Table - Scenario Analysis")
-    st.markdown("**Bull/Base/Bear scenarios** based on historical volatility analysis")
+    st.markdown("### 📋 Detailed Projections Table")
+    st.markdown("**Linear regression projections** with Monte Carlo confidence intervals")
     
-    # Create tabs for different views
-    tab1, tab2 = st.tabs(["📊 Base Case Projections", "🎯 Scenario Comparison"])
+    # Base case projections table
+    table_data = []
+    projection_years_list = [base_year] + [base_year + i for i in range(1, projection_years + 1)]
     
-    with tab1:
-        # Base case projections table
-        table_data = []
-        projection_years_list = [base_year] + [base_year + i for i in range(1, projection_years + 1)]
+    for idx, year in enumerate(projection_years_list):
+        row = {'Year': year}
         
-        for idx, year in enumerate(projection_years_list):
-            row = {'Year': year}
-            
-            if 'revenue' in projections and idx == 0:
-                row['Revenue ($B)'] = f"${projections['revenue']['historical_values'][-1]/1e3:.2f}"
-            elif 'revenue' in projections and idx > 0:
-                row['Revenue ($B)'] = f"${projections['revenue']['projected_values'][idx-1]/1e3:.2f}"
-            
-            if 'net_income' in projections and idx == 0:
-                row['Net Income ($B)'] = f"${projections['net_income']['historical_values'][-1]/1e3:.2f}"
-            elif 'net_income' in projections and idx > 0:
-                row['Net Income ($B)'] = f"${projections['net_income']['projected_values'][idx-1]/1e3:.2f}"
-            
-            if 'eps' in projections and idx == 0:
-                row['EPS ($)'] = f"${projections['eps']['historical_values'][-1]:.2f}"
-            elif 'eps' in projections and idx > 0:
-                row['EPS ($)'] = f"${projections['eps']['projected_values'][idx-1]:.2f}"
-            
-            if 'free_cash_flow' in projections and idx == 0:
-                row['FCF ($B)'] = f"${projections['free_cash_flow']['historical_values'][-1]/1e3:.2f}"
-            elif 'free_cash_flow' in projections and idx > 0:
-                row['FCF ($B)'] = f"${projections['free_cash_flow']['projected_values'][idx-1]/1e3:.2f}"
-            
-            row['Type'] = 'Actual' if idx == 0 else 'Projected'
-            table_data.append(row)
+        if 'revenue' in projections and idx == 0:
+            row['Revenue ($B)'] = f"${projections['revenue']['historical_values'][-1]/1e3:.2f}"
+        elif 'revenue' in projections and idx > 0:
+            row['Revenue ($B)'] = f"${projections['revenue']['projected_values'][idx-1]/1e3:.2f}"
         
-        projection_df = pd.DataFrame(table_data)
-        st.dataframe(projection_df, width='stretch', hide_index=True)
+        if 'net_income' in projections and idx == 0:
+            row['Net Income ($B)'] = f"${projections['net_income']['historical_values'][-1]/1e3:.2f}"
+        elif 'net_income' in projections and idx > 0:
+            row['Net Income ($B)'] = f"${projections['net_income']['projected_values'][idx-1]/1e3:.2f}"
+        
+        if 'eps' in projections and idx == 0:
+            row['EPS ($)'] = f"${projections['eps']['historical_values'][-1]:.2f}"
+        elif 'eps' in projections and idx > 0:
+            row['EPS ($)'] = f"${projections['eps']['projected_values'][idx-1]:.2f}"
+        
+        if 'free_cash_flow' in projections and idx == 0:
+            row['FCF ($B)'] = f"${projections['free_cash_flow']['historical_values'][-1]/1e3:.2f}"
+        elif 'free_cash_flow' in projections and idx > 0:
+            row['FCF ($B)'] = f"${projections['free_cash_flow']['projected_values'][idx-1]/1e3:.2f}"
+        
+        row['Type'] = 'Actual' if idx == 0 else 'Projected'
+        table_data.append(row)
     
-    with tab2:
-        # Scenario comparison
-        st.markdown("**Revenue Scenarios** (Final Year Comparison)")
-        scenario_data = []
-        
-        for metric in ['revenue', 'net_income', 'eps']:
-            if metric in scenarios:
-                metric_name = {'revenue': 'Revenue ($B)', 'net_income': 'Net Income ($B)', 'eps': 'EPS ($)'}[metric]
-                divisor = 1e3 if metric != 'eps' else 1
-                
-                scenario_data.append({
-                    'Metric': metric_name,
-                    'Bear Case': f"${scenarios[metric]['bear']['values'][-1]/divisor:.2f}",
-                    'Base Case': f"${scenarios[metric]['base']['values'][-1]/divisor:.2f}",
-                    'Bull Case': f"${scenarios[metric]['bull']['values'][-1]/divisor:.2f}",
-                    'Bear Growth': f"{scenarios[metric]['bear']['growth_rate']*100:.1f}%",
-                    'Base Growth': f"{scenarios[metric]['base']['growth_rate']*100:.1f}%",
-                    'Bull Growth': f"{scenarios[metric]['bull']['growth_rate']*100:.1f}%"
-                })
-        
-        scenario_df = pd.DataFrame(scenario_data)
-        st.dataframe(scenario_df, width='stretch', hide_index=True)
-        st.caption(f"**Scenarios represent final year ({base_year + projection_years}) projections under different growth assumptions**")
+    projection_df = pd.DataFrame(table_data)
+    st.dataframe(projection_df, width='stretch', hide_index=True)
     
     # DCF Valuation
     st.markdown("---")
@@ -1261,7 +1160,7 @@ def display_financial_projections(ticker, cached_info):
                 - **Current FCF**: ${dcf_results['fcf_current']/1e3:.2f}B  
                   *From: Historical financial statements*
                 - **FCF Growth Rate**: {dcf_results['fcf_growth_rate']*100:.2f}%  
-                  *Based on: Historical CAGR, adjusted for industry norms*
+                  *Based on: Linear regression growth rate, adjusted for industry norms*
                 - **Terminal Growth**: {dcf_results['terminal_growth_rate']*100:.2f}%  
                   *Assumption: Long-term GDP growth + industry adjustment*
                 - **CapEx Intensity**: {dcf_results.get('capex_intensity', 0.06)*100:.1f}%  
@@ -1468,37 +1367,26 @@ def display_financial_projections(ticker, cached_info):
             final_eps = projections['eps']['projected_values'][-1] if 'eps' in projections else 0
             final_fcf = projections['free_cash_flow']['projected_values'][-1]/1e3 if 'free_cash_flow' in projections else 0
             
-            # Get scenario projections
-            revenue_bull = scenarios['revenue']['bull']['values'][-1]/1e3 if 'revenue' in scenarios else 0
-            revenue_bear = scenarios['revenue']['bear']['values'][-1]/1e3 if 'revenue' in scenarios else 0
-            
             projection_summary = f"""
 **Comprehensive Financial Projection Analysis for {ticker}:**
 
 **Historical Performance (2020-{base_year}):**
-- Revenue CAGR: {growth_rates['cagr'].get('revenue', 0)*100:.2f}%
-- Net Income CAGR: {growth_rates['cagr'].get('net_income', 0)*100:.2f}%
-- EPS CAGR: {growth_rates['cagr'].get('eps', 0)*100:.2f}%
-- FCF CAGR: {growth_rates['cagr'].get('free_cash_flow', 0)*100:.2f}%
+- Revenue Growth (Linear Regression): {growth_rates['linear_regression'].get('revenue', 0)*100:.2f}%
+- Net Income Growth (Linear Regression): {growth_rates['linear_regression'].get('net_income', 0)*100:.2f}%
+- EPS Growth (Linear Regression): {growth_rates['linear_regression'].get('eps', 0)*100:.2f}%
+- FCF Growth (Linear Regression): {growth_rates['linear_regression'].get('free_cash_flow', 0)*100:.2f}%
 - Revenue Volatility: {growth_rates['volatility'].get('revenue', 0)*100:.2f}%
 
-**Projection Methodology Comparison:**
-- Primary Method Used: {projection_method.upper()}
-- CAGR: {growth_rates['cagr'].get('revenue', 0)*100:.2f}%
-- Weighted Average (recent focus): {growth_rates['weighted_average'].get('revenue', 0)*100:.2f}%
-- Linear Regression: {growth_rates['linear_regression'].get('revenue', 0)*100:.2f}%
-- Simple Average: {growth_rates['simple_average'].get('revenue', 0)*100:.2f}%
+**Projection Methodology:**
+- Method Used: Linear Regression with Monte Carlo Simulation
+- Linear Regression Revenue Growth: {growth_rates['linear_regression'].get('revenue', 0)*100:.2f}%
+- Monte Carlo Simulations: 1,000 iterations providing 10th-90th percentile confidence intervals
 
-**Base Case Projections ({final_year}):**
+**Projections ({final_year}):**
 - Revenue: ${final_revenue:.2f}B
 - Net Income: ${final_ni:.2f}B
 - EPS: ${final_eps:.2f}
 - Free Cash Flow: ${final_fcf:.2f}B
-
-**Scenario Analysis ({final_year}):**
-- Bull Case Revenue: ${revenue_bull:.2f}B ({scenarios['revenue']['bull']['growth_rate']*100:.1f}% growth)
-- Base Case Revenue: ${final_revenue:.2f}B ({growth_rates[projection_method]['revenue']*100:.1f}% growth)
-- Bear Case Revenue: ${revenue_bear:.2f}B ({scenarios['revenue']['bear']['growth_rate']*100:.1f}% growth)
 """
             
             # Add DCF results if available
@@ -1548,16 +1436,15 @@ def display_financial_projections(ticker, cached_info):
 {market_context}
 
 **Analysis Framework:**
-This analysis uses multiple advanced methodologies:
-1. **Historical Growth Analysis (2020-{base_year})**: 5-year CAGR analysis across all key metrics
-2. **Multi-Method Projections**: CAGR, weighted average, linear regression, and simple average
-3. **Scenario Analysis**: Bull/Base/Bear cases based on historical volatility
-4. **DCF Valuation**: Intrinsic value based on discounted free cash flows
-5. **Monte Carlo Simulation**: Probabilistic confidence intervals (if enabled)
+This analysis uses linear regression with Monte Carlo simulation:
+1. **Historical Growth Analysis (2020-{base_year})**: 5-year trend analysis using linear regression
+2. **Linear Regression Projections**: Statistical trend line fitted to historical data
+3. **DCF Valuation**: Intrinsic value based on discounted free cash flows
+4. **Monte Carlo Simulation**: 1,000 probabilistic scenarios providing confidence intervals (10th-90th percentile)
 
 **Visual Context:**
 The comprehensive dashboard displays:
-1. **Revenue Chart**: Full historical trend (2020-{base_year}) + {projection_years}-year projections with confidence intervals
+1. **Revenue Chart**: Full historical trend (2020-{base_year}) + {projection_years}-year projections with Monte Carlo confidence intervals
 2. **Net Income Chart**: Historical profitability trajectory + future projections
 3. **EPS Chart**: Earnings per share path from 2020 through {final_year}
 4. **Free Cash Flow Chart**: Historical FCF generation + projected cash flows (used in DCF)
@@ -1567,23 +1454,23 @@ Provide an advanced, comprehensive financial projection and valuation analysis (
 
 Write as a cohesive equity research narrative that:
 
-1. **Opens with Historical Foundation & Trend Analysis**: Begin by analyzing the 5-year historical performance (2020-{base_year}), discussing the **{growth_rates['cagr'].get('revenue', 0)*100:.2f}% revenue CAGR** and **{growth_rates['volatility'].get('revenue', 0)*100:.2f}% volatility**. Establish whether these trends are sustainable and how the company's performance has evolved over this full period. Reference the complete historical data shown in all four charts.
+1. **Opens with Historical Foundation & Trend Analysis**: Begin by analyzing the 5-year historical performance (2020-{base_year}), discussing the **{growth_rates['linear_regression'].get('revenue', 0)*100:.2f}% revenue growth rate** (linear regression) and **{growth_rates['volatility'].get('revenue', 0)*100:.2f}% volatility**. Establish whether these trends are sustainable and how the company's performance has evolved over this full period. Reference the complete historical data shown in all four charts.
 
-2. **Evaluates Projection Methodologies**: Discuss how different projection methods (**{projection_method}** as primary, CAGR, weighted average, linear regression) produce varying growth estimates. Explain why the selected methodology is appropriate for {ticker} and how the **{growth_rates[projection_method].get('revenue', 0)*100:.2f}% revenue growth** compares to alternatives. Discuss the implications of the differences between methods.
+2. **Evaluates Linear Regression Methodology**: Explain why linear regression is an appropriate methodology for {ticker} and how the **{growth_rates['linear_regression'].get('revenue', 0)*100:.2f}% revenue growth** rate captures the long-term growth trajectory. Discuss the statistical validity of this trend line and its implications for future performance.
 
-3. **Analyzes Revenue & Profitability Projections**: Flow into detailed analysis of the base case projections showing revenue reaching **${final_revenue:.2f}B** and net income of **${final_ni:.2f}B** by {final_year}. Discuss margin trends, whether profitability is growing faster/slower than revenue, and what the historical charts (2020-{base_year}) suggest about future trajectory.
+3. **Analyzes Revenue & Profitability Projections**: Flow into detailed analysis of the projections showing revenue reaching **${final_revenue:.2f}B** and net income of **${final_ni:.2f}B** by {final_year}. Discuss margin trends, whether profitability is growing faster/slower than revenue, and what the historical charts (2020-{base_year}) suggest about future trajectory.
 
-4. **Explores Scenario Analysis Framework**: Naturally incorporate the bull/base/bear scenario analysis. Discuss how the bull case (**${revenue_bull:.2f}B revenue**) vs bear case (**${revenue_bear:.2f}B**) scenarios bracket the possibilities. Explain what conditions would drive each scenario and which seems most probable based on industry dynamics and company-specific factors.
+4. **Incorporates Monte Carlo Uncertainty Analysis**: Discuss the Monte Carlo simulation results showing confidence intervals. Explain how the **{growth_rates['volatility'].get('revenue', 0)*100:.2f}% historical volatility** creates a range of possible outcomes and what the 10th-90th percentile bands tell us about projection uncertainty. Reference the shaded confidence interval areas in the revenue chart.
 
 5. **Integrates DCF Valuation Analysis**: Weave in the DCF valuation showing **${dcf_results.get('fair_value_per_share', 0):.2f} fair value** vs **${dcf_results.get('current_price', 0):.2f} current price** (if DCF available). Discuss whether the **{dcf_results.get('upside', 0):.1f}% implied upside/downside** makes sense given the projected FCF growth of **{dcf_results.get('fcf_growth_rate', 0)*100:.2f}%** and the **{dcf_results.get('wacc', 0)*100:.2f}% WACC** discount rate. Evaluate if the DCF assumptions are reasonable.
 
-6. **Compares with Market Expectations**: Compare our projections and DCF valuation with market expectations (analyst targets, forward P/E, PEG ratio). Explain any divergence between our analysis and market consensus. Discuss whether the market is pricing in expectations consistent with our base case, bull case, or bear case.
+6. **Compares with Market Expectations**: Compare our projections and DCF valuation with market expectations (analyst targets, forward P/E, PEG ratio). Explain any divergence between our analysis and market consensus. Discuss whether the market is pricing in expectations consistent with our linear regression projections.
 
-7. **Addresses Key Assumptions, Risks & Sensitivities**: Throughout the narrative, acknowledge critical assumptions (growth rates, WACC, terminal growth, margin stability) and what could cause actuals to differ materially. Discuss the **{growth_rates['volatility'].get('revenue', 0)*100:.2f}% historical volatility** and how this uncertainty is reflected in scenario and Monte Carlo analysis. Reference industry context and competitive dynamics.
+7. **Addresses Key Assumptions, Risks & Sensitivities**: Throughout the narrative, acknowledge critical assumptions (linear growth trajectory, WACC, terminal growth, margin stability) and what could cause actuals to differ materially. Discuss how the Monte Carlo simulation helps quantify projection uncertainty. Reference industry context and competitive dynamics.
 
-8. **Synthesizes Valuation & Investment Thesis**: Build toward a comprehensive synthesis of all analysis—projections, scenarios, DCF, market comparison—to form an investment thesis. Discuss what the stock might be worth in {projection_years} years under different scenarios and whether current valuation offers attractive risk/reward.
+8. **Synthesizes Valuation & Investment Thesis**: Build toward a comprehensive synthesis of all analysis—linear regression projections, Monte Carlo uncertainty, DCF valuation, market comparison—to form an investment thesis. Discuss what the stock might be worth in {projection_years} years and whether current valuation offers attractive risk/reward.
 
-9. **Concludes with Balanced Investment Recommendation**: End with a clear, balanced conclusion that ties together historical trends, projection analysis, valuation assessment, and scenario outcomes. Provide perspective on whether {ticker} represents an attractive investment opportunity given all the analysis presented.
+9. **Concludes with Balanced Investment Recommendation**: End with a clear, balanced conclusion that ties together historical trends, linear regression projection analysis, Monte Carlo uncertainty assessment, valuation analysis, and market positioning. Provide perspective on whether {ticker} represents an attractive investment opportunity given all the analysis presented.
 
 **Formatting Requirements:**
 - Write in flowing paragraphs (8-10 paragraphs total), NOT bullet points or multiple heading sections
@@ -1592,7 +1479,7 @@ Write as a cohesive equity research narrative that:
 - Use smooth transitions between paragraphs to maintain narrative flow
 - Write in an engaging, professional tone as if writing a comprehensive equity research report
 
-Be highly specific, cite actual numbers from all projections/metrics/scenarios/DCF, reference all four projection charts showing 2020-{final_year} data naturally within the narrative, integrate multiple methodologies, and provide balanced, sophisticated analysis that a professional analyst would produce."""
+Be highly specific, cite actual numbers from all projections/metrics/DCF, reference all four projection charts showing 2020-{final_year} data naturally within the narrative, integrate the linear regression methodology and Monte Carlo uncertainty analysis, and provide balanced, sophisticated analysis that a professional analyst would produce."""
             
             try:
                 # Generate AI insight using OpenAI
@@ -1609,7 +1496,7 @@ Be highly specific, cite actual numbers from all projections/metrics/scenarios/D
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a senior financial analyst and equity research professional with deep expertise in advanced financial modeling, DCF valuation, scenario analysis, and multi-method forecasting. Write in flowing, paragraph-based narrative format, NOT as bullet points or multiple sections with headings. Integrate multiple analytical frameworks (historical analysis, projection methodologies, scenario analysis, DCF valuation, market comparison) seamlessly into a cohesive narrative. Provide sophisticated, balanced analysis that synthesizes all methodologies and data points naturally within the narrative, as you would in a comprehensive professional equity research report. Reference all charts and data spanning 2020 to future projections throughout your analysis."
+                            "content": "You are a senior financial analyst and equity research professional with deep expertise in statistical financial modeling, linear regression analysis, DCF valuation, and Monte Carlo simulation. Write in flowing, paragraph-based narrative format, NOT as bullet points or multiple sections with headings. Integrate analytical frameworks (historical trend analysis, linear regression projections, Monte Carlo uncertainty analysis, DCF valuation, market comparison) seamlessly into a cohesive narrative. Provide sophisticated, balanced analysis that synthesizes the linear regression methodology and Monte Carlo confidence intervals naturally within the narrative, as you would in a comprehensive professional equity research report. Reference all charts and data spanning 2020 to future projections throughout your analysis."
                         },
                         {
                             "role": "user",
@@ -1630,11 +1517,11 @@ Be highly specific, cite actual numbers from all projections/metrics/scenarios/D
                 
                 # Add comprehensive disclaimer
                 st.caption("""
-                💡 **AI-Generated Advanced Financial Analysis**: This comprehensive analysis integrates multiple projection methodologies 
-                (CAGR, weighted average, linear regression, simple average), scenario analysis (Bull/Base/Bear cases), 
-                DCF valuation, and Monte Carlo simulation where applicable. Analysis is based on historical financial data (2020-2024), 
+                💡 **AI-Generated Financial Analysis**: This comprehensive analysis uses linear regression methodology 
+                with Monte Carlo simulation to project future performance. Analysis is based on historical financial data (2020-2024), 
                 current market metrics, and analyst expectations. Projections are estimates and may not reflect actual future performance. 
                 The DCF valuation uses estimated WACC and growth assumptions that should be validated independently. 
+                Monte Carlo confidence intervals (10th-90th percentile) provide probabilistic outcome ranges based on historical volatility.
                 Always conduct additional research, validate assumptions, and consider multiple scenarios before making investment decisions.
                 Past performance does not guarantee future results.
                 """)
@@ -1643,7 +1530,7 @@ Be highly specific, cite actual numbers from all projections/metrics/scenarios/D
                 st.warning(f"⚠️ Unable to generate AI projection analysis: {str(e)}")
                 st.info("Please ensure your OpenAI API key is properly configured in the .env file.")
     else:
-        st.info("🔑 **AI Advanced Analysis Unavailable**: Configure your OpenAI API key in the .env file to enable comprehensive AI-powered analysis that synthesizes all projection methodologies, scenario analysis, DCF valuation, historical trends (2020-present), and market expectations into a cohesive investment thesis and recommendation.")
+        st.info("🔑 **AI Advanced Analysis Unavailable**: Configure your OpenAI API key in the .env file to enable comprehensive AI-powered analysis that synthesizes linear regression projections, Monte Carlo uncertainty analysis, DCF valuation, historical trends (2020-present), and market expectations into a cohesive investment thesis and recommendation.")
     
     # Final Summary and Important Disclosures
     st.markdown("---")
@@ -1655,9 +1542,9 @@ Be highly specific, cite actual numbers from all projections/metrics/scenarios/D
         st.markdown("#### ✅ Strengths of This Analysis")
         st.markdown("""
         - **Comprehensive Historical Data**: 5-year trend analysis (2020-2024)
-        - **Multiple Methodologies**: CAGR, weighted average, regression, simple average
+        - **Statistical Methodology**: Linear regression captures long-term growth trajectory
         - **Industry-Validated Growth Rates**: Capped at reasonable industry benchmarks
-        - **Scenario Analysis**: Bull/Base/Bear cases with probabilistic Monte Carlo
+        - **Monte Carlo Simulation**: 1,000 simulations provide probabilistic confidence intervals
         - **Enhanced DCF Model**: Uses actual CapEx, debt costs, and industry-adjusted WACC
         - **Sensitivity Analysis**: Shows impact of key assumption changes
         - **Transparent Assumptions**: All inputs and calculations clearly documented
