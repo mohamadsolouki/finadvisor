@@ -177,7 +177,7 @@ def display_risk_analysis(ticker, cached_info):
     
     with col2:
         fig = create_drawdown_chart(hist)
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
     
     st.markdown("---")
     

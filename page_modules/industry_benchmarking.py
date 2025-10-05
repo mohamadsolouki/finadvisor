@@ -32,7 +32,7 @@ def display_industry_benchmarking(ticker, cached_info):
         
         # Display data table
         st.markdown("### 📊 Financial Comparison")
-        st.dataframe(df, width='stretch')
+        st.dataframe(df, use_container_width=True)
         
         # Key metrics comparison
         col1, col2 = st.columns(2)

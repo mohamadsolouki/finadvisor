@@ -1286,7 +1286,7 @@ def display_financial_projections(ticker, cached_info):
         title_font=dict(size=16)
     )
     
-    st.plotly_chart(fig, width='stretch', config={'displayModeBar': True, 'displaylogo': False})
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True, 'displaylogo': False})
     
     if enable_monte_carlo:
         st.caption("📊 **Charts include Monte Carlo confidence intervals** (shaded areas show 10th-90th percentile range from 1,000 simulations for Revenue, Net Income, EPS, and Free Cash Flow)")
@@ -1662,7 +1662,7 @@ def display_financial_projections(ticker, cached_info):
                 height=400
             )
             
-            st.plotly_chart(fig_dcf, width='stretch', config={'displayModeBar': True, 'displaylogo': False})
+            st.plotly_chart(fig_dcf, use_container_width=True, config={'displayModeBar': True, 'displaylogo': False})
             
             st.caption("**DCF Interpretation:** The DCF model estimates intrinsic value by discounting all future free cash flows to present value. A positive upside suggests the stock may be undervalued.")
             

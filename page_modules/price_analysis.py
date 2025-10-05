@@ -88,7 +88,7 @@ def display_price_analysis(ticker, cached_info=None):
     st.markdown("### 📊 Price History with Technical Indicators")
     
     fig, hist = create_candlestick_chart(hist, ticker)
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True)
     
     # Technical indicators
     col1, col2 = st.columns(2)
@@ -97,7 +97,7 @@ def display_price_analysis(ticker, cached_info=None):
         # RSI Chart
         st.markdown("#### Relative Strength Index (RSI)")
         fig_rsi, hist = create_rsi_chart(hist)
-        st.plotly_chart(fig_rsi, width='stretch')
+        st.plotly_chart(fig_rsi, use_container_width=True)
         
         current_rsi = hist['RSI'].iloc[-1]
         if current_rsi > 70:
@@ -149,7 +149,7 @@ def display_price_analysis(ticker, cached_info=None):
                                  marker_color='lightblue'))
         fig_vol.update_layout(xaxis_title='Date', yaxis_title='Volume',
                              template='plotly_white', height=400)
-        st.plotly_chart(fig_vol, width='stretch')
+        st.plotly_chart(fig_vol, use_container_width=True)
     
     with col2:
         st.subheader("Price Returns Distribution")
@@ -159,7 +159,7 @@ def display_price_analysis(ticker, cached_info=None):
                                         marker_color='lightgreen'))
         fig_dist.update_layout(xaxis_title='Daily Return', yaxis_title='Frequency',
                               template='plotly_white', height=400)
-        st.plotly_chart(fig_dist, width='stretch')
+        st.plotly_chart(fig_dist, use_container_width=True)
     
     # Performance metrics
     st.subheader("Performance Metrics")

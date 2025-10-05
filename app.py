@@ -146,14 +146,14 @@ def display_category_data(category_name, data, analyzer, ai_generator=None):
             # Single metric trend
             metric_row = data.iloc[0:1]
             fig = create_trend_chart(metric_row, f"{data.iloc[0]['Parameters']} Trend", data.iloc[0]['Parameters'])
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         if len(data) > 1:
             # Multiple metrics comparison
             comparison_data = data.iloc[:min(5, len(data))]
             fig = create_comparison_chart(comparison_data, f"{category_name} - Top Metrics Comparison")
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, use_container_width=True)
     
     # AI-powered insights section
     st.markdown("### 🤖 Key Insights")
@@ -435,7 +435,7 @@ def display_executive_summary(categorized_data, analyzer):
     if income_data is not None:
         revenue_profit_data = income_data[income_data['Parameters'].isin(['Total Revenue', 'Net Income', 'Operating Income'])]
         fig = create_comparison_chart(revenue_profit_data, "Revenue and Profit Trends")
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
     
     # Key Insights
     st.subheader("Key Financial Insights")
@@ -512,7 +512,7 @@ def display_custom_analysis(categorized_data):
             st.dataframe(custom_df, width='stretch')
             
             fig = create_comparison_chart(custom_df, "Custom Metrics Comparison")
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, use_container_width=True)
 
 
 if __name__ == "__main__":

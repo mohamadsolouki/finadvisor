@@ -71,7 +71,7 @@ def display_esg_analysis(ticker, cached_info=None):
                     ])
                     fig.update_layout(title='ESG Score Breakdown', yaxis_title='Score',
                                      template='plotly_white', height=400, showlegend=False)
-                    st.plotly_chart(fig, width='stretch')
+                    st.plotly_chart(fig, use_container_width=True)
             
             with col2:
                 # ESG interpretation
